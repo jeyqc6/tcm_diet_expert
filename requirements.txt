@@ -1,0 +1,27 @@
+# diet_expert · Python 依赖清单
+# 换机子/新环境一键安装：pip install -r requirements.txt
+#
+# 各包对应哪个脚本、能不能跳过，见下面分组注释；
+# 具体用法见各脚本文件头的 docstring。
+
+# ---- 知识库摄入（planning/step1-naive-rag/ingest.py）----
+pdfplumber          # 有文字层 PDF 逐页解析 + 表格抽取兜底路径
+beautifulsoup4      # NIH XML 补剂说明按 h2/h3 解析
+lxml                # BeautifulSoup 用 "lxml" 作为解析器
+transformers        # AutoTokenizer.from_pretrained("BAAI/bge-m3")，token 感知二次切分用
+
+# ---- Embedding + 入库（db/embed_bge_m3.py, db/load_recipes.py）----
+FlagEmbedding       # BGE-M3 dense embedding 模型
+torch               # FlagEmbedding 的底层依赖
+psycopg2-binary     # 连 Postgres
+pgvector            # Postgres 里的 vector 类型 <-> numpy 互转
+numpy
+
+# ---- Step1 naive RAG 原型 / 评测（planning/step1-naive-rag/）----
+scikit-learn        # build_and_eval_bm25.py 用 CountVectorizer 做 BM25 对比
+openai              # naive_rag.py 走 OpenAI 兼容接口调用 LLM（换 base_url 可接国产模型）
+
+# ---- 可选 ----
+# docling           # D23：表格密集型 PDF（GB7718-2025.pdf、Daily Serving Sizes.pdf）优先路径；
+#                     装不上会自动回退到 pdfplumber + 启发式表头合并，不影响主流程。
+#                     某些沙盒环境外网被挡会装不上，见 ingest.py 里 ingest_pdf_tables_docling 的注释。

@@ -1,0 +1,42 @@
+# --- 本地资料 / 规划（不上传 GitHub）---
+docs/archive/
+knowledge/
+planning/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# --- 工具 / IDE ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# --- 测试 / 覆盖率 ---
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- 构建产物 ---
+dist/
+build/
+*.egg-info/
+
+# --- 本地数据库 / 模型缓存（体积大，各环境自行生成）---
+*.npz
+.huggingface/
+.cache/

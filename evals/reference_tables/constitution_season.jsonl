@@ -1,0 +1,45 @@
+{"id":"E1-01","constitution":"ping_he","season":"春","direction":"少酸多甘,疏肝健脾;总体均衡即可","recommend":["山药","小米","菠菜","枸杞"],"avoid":["过量酸味"],"rationale":"平和质无明显偏性,按时令原则调整即可","source_status":"derived"}
+{"id":"E1-02","constitution":"ping_he","season":"夏","direction":"减苦增辛,清心防暑","recommend":["番茄","绿豆","苦瓜(适量)"],"avoid":["过食冰镇"],"rationale":"时令原则为主","source_status":"derived"}
+{"id":"E1-03","constitution":"ping_he","season":"长夏","direction":"健脾祛湿","recommend":["南瓜","小米","玉米","山药"],"avoid":["肥甘厚味"],"rationale":"长夏湿盛,脾主运化","source_status":"derived"}
+{"id":"E1-04","constitution":"ping_he","season":"秋","direction":"减辛增酸,润肺","recommend":["梨","百合","银耳","白萝卜"],"avoid":["过食辛燥"],"rationale":"秋燥伤津","source_status":"derived"}
+{"id":"E1-05","constitution":"ping_he","season":"冬","direction":"减咸增苦,补肾温阳","recommend":["黑米","黑豆","黑芝麻","桑葚"],"avoid":["过咸"],"rationale":"冬主藏,肾应冬","source_status":"derived"}
+{"id":"E1-06","constitution":"qi_xu","season":"春","direction":"补中益气为主,兼顾疏肝;春季气机升发,气虚者易感疲乏","recommend":["山药","大枣","小米","黄芪(食疗量)"],"avoid":["耗气食物","过度发散的辛味"],"rationale":"体质基线(补中益气)+ 时令(疏肝健脾),两者在'健脾'上重合可加强","source_status":"derived"}
+{"id":"E1-07","constitution":"qi_xu","season":"夏","direction":"益气生津,防暑不伤气;暑易耗气","recommend":["山药","西洋参(少量)","乌梅汤"],"avoid":["过食生冷","大汗后猛灌冷饮"],"rationale":"暑邪耗气伤津,气虚质在夏季风险叠加","source_status":"derived"}
+{"id":"E1-08","constitution":"qi_xu","season":"长夏","direction":"健脾益气祛湿;气虚与湿困互为因果","recommend":["山药","茯苓","薏米","白扁豆"],"avoid":["生冷","甜腻"],"rationale":"体质与时令高度一致,是最典型的加强场景","source_status":"derived"}
+{"id":"E1-09","constitution":"qi_xu","season":"秋","direction":"补气润肺","recommend":["山药","百合","银耳","梨"],"avoid":["辛燥"],"rationale":"肺主气,秋季补气与润肺方向一致","source_status":"derived"}
+{"id":"E1-10","constitution":"qi_xu","season":"冬","direction":"补气温阳,冬藏进补","recommend":["山药","大枣","桂圆","黑豆"],"avoid":["生冷","过咸"],"rationale":"冬季是气虚质进补的最佳窗口","source_status":"derived"}
+{"id":"E1-11","constitution":"yang_xu","season":"春","direction":"温阳为主,警惕倒春寒;春季气候不稳,阳虚质最易受寒邪","recommend":["生姜","韭菜","小茴香"],"avoid":["生冷","寒凉蔬果"],"rationale":"⭐ 这是六淫理论的关键场景:日历上是春天但可能倒春寒,需结合实时气候而非只看季节","source_status":"derived"}
+{"id":"E1-12","constitution":"yang_xu","season":"夏","direction":"夏季不宜过度贪凉;可借夏季阳气温补(冬病夏治)","recommend":["生姜","羊肉(少量)","温性汤品"],"avoid":["冰镇饮品","空调直吹后再进冷食","大量瓜类"],"rationale":"⭐ 反直觉场景:夏天反而是阳虚质最容易受伤的季节,因为生冷摄入激增","source_status":"derived"}
+{"id":"E1-13","constitution":"yang_xu","season":"长夏","direction":"温阳化湿并重","recommend":["生姜","薏米","茯苓","白扁豆"],"avoid":["生冷","甜腻"],"rationale":"阳虚生内寒,寒湿易困脾","source_status":"derived"}
+{"id":"E1-14","constitution":"yang_xu","season":"秋","direction":"温阳兼润燥,不可一味温燥","recommend":["核桃","栗子","山药","少量梨(熟食)"],"avoid":["生冷","过度辛燥"],"rationale":"⚠️ 内部张力:体质要温,时令要润。解法是温润并行、梨熟食","source_status":"derived"}
+{"id":"E1-15","constitution":"yang_xu","season":"冬","direction":"温阳祛寒,全年最对症的季节","recommend":["羊肉","生姜","桂圆","肉桂","核桃"],"avoid":["生冷","寒凉"],"rationale":"体质与时令完全一致","source_status":"derived"}
+{"id":"E1-16","constitution":"yin_xu","season":"春","direction":"滋阴柔肝;春季肝阳易亢,阴虚者尤甚","recommend":["枸杞","桑葚","百合","菠菜"],"avoid":["辛辣温燥","过量酸味"],"rationale":"阴虚阳亢与春季肝阳升发叠加","source_status":"derived"}
+{"id":"E1-17","constitution":"yin_xu","season":"夏","direction":"滋阴清热生津","recommend":["百合","银耳","绿豆","西瓜(适量)"],"avoid":["辛辣","烧烤煎炸"],"rationale":"暑热伤津,阴虚质风险叠加","source_status":"derived"}
+{"id":"E1-18","constitution":"yin_xu","season":"长夏","direction":"滋阴与祛湿的平衡是难点","recommend":["山药","薏米(适量)","冬瓜"],"avoid":["过用温燥祛湿药食"],"rationale":"⚠️ 内部张力:祛湿多用温燥,而阴虚忌温燥。解法是选性平的利湿食材","source_status":"derived"}
+{"id":"E1-19","constitution":"yin_xu","season":"秋","direction":"滋阴润燥,全年最对症的季节","recommend":["梨","百合","银耳","蜂蜜","白萝卜"],"avoid":["辛燥"],"rationale":"体质与时令完全一致","source_status":"derived"}
+{"id":"E1-20","constitution":"yin_xu","season":"冬","direction":"滋阴填精,进补但不宜大温大热","recommend":["黑芝麻","桑葚","黑豆","枸杞"],"avoid":["羊肉等大热之品","过咸"],"rationale":"⚠️ 常见误区:冬季进补一律推温热,对阴虚质是错的","source_status":"derived"}
+{"id":"E1-21","constitution":"tan_shi","season":"春","direction":"化痰祛湿兼疏肝健脾","recommend":["荷叶","赤小豆","陈皮","白萝卜"],"avoid":["肥甘厚味","甜腻"],"rationale":"春季肝气犯脾,痰湿质需健脾","source_status":"derived"}
+{"id":"E1-22","constitution":"tan_shi","season":"夏","direction":"化湿清热,防暑湿困脾","recommend":["冬瓜","薏米","荷叶","海带"],"avoid":["冰镇","甜饮","油腻"],"rationale":"暑多挟湿,与体质方向叠加","source_status":"derived"}
+{"id":"E1-23","constitution":"tan_shi","season":"长夏","direction":"全年风险最高的时段,重点祛湿","recommend":["薏米","赤小豆","茯苓","白扁豆","海带"],"avoid":["肥甘厚味","生冷","久坐"],"rationale":"⭐ 长夏湿盛 × 痰湿体质 = 最强叠加,应提高干预强度","source_status":"derived"}
+{"id":"E1-24","constitution":"tan_shi","season":"秋","direction":"祛湿兼润燥,不可过用燥湿之品","recommend":["白萝卜","陈皮","薏米(适量)","梨"],"avoid":["过度温燥"],"rationale":"⚠️ 内部张力:燥湿与润燥方向相反,需平衡","source_status":"derived"}
+{"id":"E1-25","constitution":"tan_shi","season":"冬","direction":"温化痰湿;冬季进补易加重痰湿,需节制","recommend":["生姜","陈皮","白萝卜","黑豆"],"avoid":["大量温补厚味","甜腻"],"rationale":"⚠️ 常见误区:冬季一律进补,对痰湿质会加重","source_status":"derived"}
+{"id":"E1-26","constitution":"shi_re","season":"春","direction":"清热化湿兼疏肝","recommend":["芹菜","蒲公英","冬瓜","绿豆芽"],"avoid":["辛辣","油腻","饮酒"],"rationale":"春季肝火易旺,与湿热叠加","source_status":"derived"}
+{"id":"E1-27","constitution":"shi_re","season":"夏","direction":"清热利湿,全年最对症的季节","recommend":["冬瓜","苦瓜","绿豆","丝瓜"],"avoid":["辛辣","烧烤","饮酒"],"rationale":"体质与时令一致","source_status":"derived"}
+{"id":"E1-28","constitution":"shi_re","season":"长夏","direction":"清热化湿并重,风险高发期","recommend":["冬瓜皮","薏米","赤小豆","苦瓜"],"avoid":["肥甘厚味","甜腻","饮酒"],"rationale":"湿热 × 长夏湿盛,强叠加","source_status":"derived"}
+{"id":"E1-29","constitution":"shi_re","season":"秋","direction":"清热润燥,湿邪渐退","recommend":["白萝卜","梨","冬瓜","银耳"],"avoid":["辛辣温燥"],"rationale":"秋季减辛,与湿热质忌辛辣方向一致","source_status":"derived"}
+{"id":"E1-30","constitution":"shi_re","season":"冬","direction":"冬季不宜温补,以平补清润为主","recommend":["白萝卜","黑豆","冬瓜","银耳"],"avoid":["羊肉等温热之品","火锅","饮酒"],"rationale":"⚠️ 常见误区:冬季进补对湿热质是反向操作","source_status":"derived"}
+{"id":"E1-31","constitution":"xue_yu","season":"春","direction":"活血兼疏肝理气;气行则血行","recommend":["山楂","黑木耳","玫瑰花","陈皮"],"avoid":["过度寒凉(寒凝血滞)"],"rationale":"春季疏肝与活血方向协同","source_status":"derived"}
+{"id":"E1-32","constitution":"xue_yu","season":"夏","direction":"活血,注意补充水分防血黏","recommend":["山楂","黑木耳","番茄"],"avoid":["久坐不动"],"rationale":"暑热出汗多,津亏加重血行不畅","source_status":"derived"}
+{"id":"E1-33","constitution":"xue_yu","season":"长夏","direction":"活血兼化湿","recommend":["山楂","薏米","黑木耳"],"avoid":["油腻"],"rationale":"湿阻气机,气滞则血瘀","source_status":"derived"}
+{"id":"E1-34","constitution":"xue_yu","season":"秋","direction":"活血兼润燥","recommend":["黑木耳","山楂","桃仁(食疗量)"],"avoid":["过度收敛"],"rationale":"秋主收敛,与活血方向有轻微张力","source_status":"derived"}
+{"id":"E1-35","constitution":"xue_yu","season":"冬","direction":"温经活血;寒凝加重血瘀","recommend":["生姜","红糖姜茶","山楂","桂圆"],"avoid":["生冷","受寒"],"rationale":"⭐ 寒主收引凝滞,冬季是血瘀质症状最明显的时段","source_status":"derived"}
+{"id":"E1-36","constitution":"qi_yu","season":"春","direction":"疏肝理气,全年最对症的季节","recommend":["玫瑰花","陈皮","佛手","芹菜"],"avoid":["过度酸收"],"rationale":"⭐ 春应肝,气郁质与春季疏肝原则完全一致","source_status":"derived"}
+{"id":"E1-37","constitution":"qi_yu","season":"夏","direction":"疏肝兼清心","recommend":["玫瑰花","莲子心(少量)","百合"],"avoid":["浓茶咖啡过量"],"rationale":"夏应心,气郁易化火扰心","source_status":"derived"}
+{"id":"E1-38","constitution":"qi_yu","season":"长夏","direction":"疏肝健脾;肝郁易犯脾","recommend":["陈皮","山药","佛手","小米"],"avoid":["暴饮暴食"],"rationale":"肝郁乘脾是常见传变","source_status":"derived"}
+{"id":"E1-39","constitution":"qi_yu","season":"秋","direction":"疏肝兼润燥;秋季易生悲忧情绪","recommend":["百合","玫瑰花","梨","银耳"],"avoid":["辛燥"],"rationale":"秋应肺,肺志为忧,情志与体质叠加","source_status":"derived"}
+{"id":"E1-40","constitution":"qi_yu","season":"冬","direction":"疏肝兼温养","recommend":["陈皮","桂圆","玫瑰花","黑豆"],"avoid":["过度滋腻"],"rationale":"冬季活动减少,气机更易郁滞","source_status":"derived"}
+{"id":"E1-41","constitution":"te_bing","season":"春","direction":"⚠️ 春季花粉与温差是高风险期。饮食以平和为主,避免已知过敏原与'发物'","recommend":["性平食材","已确认安全的常吃食物"],"avoid":["已知过敏原","首次尝试的新食材","海鲜等常见致敏食物"],"rationale":"⚠️ 特禀质的推荐逻辑与其他八种体质不同:以'排除'为主而非'补益'为主。过敏原硬阻断不可绕过","source_status":"derived"}
+{"id":"E1-42","constitution":"te_bing","season":"夏","direction":"⚠️ 同上,注意冷饮与季节性食物引发的反应","recommend":["性平食材","已确认安全的常吃食物"],"avoid":["已知过敏原","芒果菠萝等易致敏水果(若无既往安全记录)"],"rationale":"同 E1-41","source_status":"derived"}
+{"id":"E1-43","constitution":"te_bing","season":"长夏","direction":"⚠️ 同上,注意霉变与发酵食品","recommend":["性平食材","已确认安全的常吃食物"],"avoid":["已知过敏原","霉变风险食物"],"rationale":"同 E1-41","source_status":"derived"}
+{"id":"E1-44","constitution":"te_bing","season":"秋","direction":"⚠️ 秋季花粉与干燥皮肤屏障受损期,风险升高","recommend":["性平润燥食材(在已确认安全范围内)"],"avoid":["已知过敏原","坚果类(若无既往安全记录)"],"rationale":"同 E1-41","source_status":"derived"}
+{"id":"E1-45","constitution":"te_bing","season":"冬","direction":"⚠️ 冬季进补场景风险最高——羊肉、海鲜、坚果都是常见致敏源","recommend":["性平温和食材(在已确认安全范围内)"],"avoid":["已知过敏原","火锅等成分不可控场景","高汤"],"rationale":"⭐ 冬季进补的社交场景(火锅、年夜饭)成分不可控,是特禀质全年最高风险时段","source_status":"derived"}
