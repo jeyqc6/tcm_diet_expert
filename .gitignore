@@ -2,6 +2,7 @@
 docs/archive/
 knowledge/
 planning/
+_archive/
 
 # --- Python ---
 __pycache__/
