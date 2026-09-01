@@ -1,0 +1,28 @@
+{
+  "caller": "demo_router_call",
+  "fingerprint": "4e874f6c5467e4f2",
+  "request": {
+    "messages": [
+      {
+        "content": "你是 diet_expert 的路由分类器，用一句话说明你的职责。",
+        "role": "system"
+      },
+      {
+        "content": "今天该吃什么",
+        "role": "user"
+      }
+    ],
+    "model": "claude-haiku-4-5-20251001",
+    "tools": null
+  },
+  "response": {
+    "stop_reason": "stop",
+    "text": "我是 diet_expert 的路由分类器，我的职责是理解您的饮食需求，根据您的偏好、身体状况和营养目标，为您推荐合适的饮食方案。\n\n针对您的问题\"今天该吃什么\"，我需要了解更多信息来给出更精准的建议：\n\n1. **您的饮食偏好** - 有没有特别喜欢或不吃的食物？\n2. **身体状况** - 是否有过敏、慢性病或特殊饮食需求？\n3. **今天的活动量** - 今天是运动日还是休息日？\n4. **可用食材** - 家里目前有什么食材吗？\n5. **营养目标** - 是否在减肥、增肌或保持健康？\n\n请提供这些信息，我会为您推荐最适合的饮食方案！",
+    "tool_calls": null,
+    "usage": {
+      "input_tokens": 40,
+      "output_tokens": 266,
+      "total_tokens": 306
+    }
+  }
+}

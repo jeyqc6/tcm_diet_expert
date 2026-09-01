@@ -1,0 +1,20 @@
+# build context 排除清单——不排除的话 `docker build` 会先把整个目录打包发给
+# Docker daemon，knowledge/ 一个目录就 2GB+（recipe_xiachufang.json 单个文件
+# 2GB），不排除等于每次 build 先花几分钟打包一份用不上的数据。
+# Dockerfile 只 COPY backend/ api/ db/，本来就不需要下面这些。
+
+knowledge/
+evals/
+planning/
+docs/
+frontend/node_modules/
+frontend/.next/
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+_archive/
+*.md

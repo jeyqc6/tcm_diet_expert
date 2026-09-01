@@ -1,12 +1,12 @@
 # 实现设计文档
 
-**版本** v0.5 · **状态** Draft(骨架未开工前的设计冻结)· **最后更新** 2026-08-26
+**版本** v0.6 · **状态** Draft(设计对照 + 诚实完成状态)· **最后更新** 2026-08-29
 
-关联:`PRD.md`(what/why)· `DECISIONS.md`(为什么选这个不选那个)· `ENGINEERING.md`(可靠性/测试怎么做)· `RAG_PIPELINE_DESIGN.md`(RAG 四环节细节)· `planning/roadmap.md`(按什么顺序学+做)
+关联:`PRD.md`(what/why)· `DECISIONS.md`(为什么选这个不选那个)· `ENGINEERING.md`(可靠性/测试怎么做)· `ASYNC_DESIGN.md`(Agent async/sync 分层与并发)· `RAG_PIPELINE_DESIGN.md`(RAG 四环节细节)· `planning/roadmap.md`(按什么顺序学+做)
 
 > **这份文档回答的问题,和其他文档不一样**:PRD 说"要做什么、为什么要做";DECISIONS 说"为什么选 A 不选 B";ENGINEERING 说"降级/重试/测试怎么实现";roadmap 说"按什么顺序学、每天干什么"。**本文档说的是"具体长什么样"**——工具的函数签名、表的字段、请求从进来到出去经过哪几步、MCP server 暴露哪些方法。写代码时应该直接对照这份文档,而不是从 PRD 反推。
 >
-> 本文档最后一节(§9)是**诚实的完成状态表**——目前只有 RAG 摄入管线和 recipes/knowledge_chunks 两张表的 SQL 是跑通过的真代码,MCP server、中枢 agent、两个 SubAgent、调和层、核查 pass、记忆写入、前端全部还没有一行实现代码。这不是疏漏,是如实记录:这份文档本身就是"骨架期开工前"的设计冻结,骨架期(roadmap 阶段 4)开始后每完成一项就回来勾掉。
+> §9 是**诚实的完成状态表**。阶段 4–6 的主链路已有真代码；阶段 7 是 Partial（见该节剩余项），**不要标成 Done**。阶段 8（B2 ablation / 全量 eval）未开始。
 
 ---
 
@@ -23,7 +23,7 @@
    │  · 命中过敏原/禁忌/补剂关键词 → write_memory(critical) → 人在环确认 → 继续
    │
    ▼
-③ 中枢 agent:分级路由(六条分支)                              [D12/D25 · M13]
+③ 中枢 agent:分级路由(七条分支,D33 新增 other)              [D12/D25/D33 · M13]
    │
    ├── 记录(写入) ──────────────────────────────┐
    ├── 记录回顾(查自己的 diet_log)───────────────┤
@@ -44,17 +44,23 @@
                           ▼
               会话落库(供压缩)+ 隐式反馈埋点
 
+   other(问候/闲聊/范围外问题,D33)── 不经过 SubAgent/调和层/核查 pass ──┐
+                                                                     ▼
+                                                    一次直接回应(流式输出)
+
 工具层(经本地 MCP server 暴露,D7 修订):
   retrieve_tcm · retrieve_nutrition · query_weather · query_diet_log
   · write_memory · query_recipes_by_ingredients
 
 存储层(单一 Postgres 实例,D4/D18/D23/D24):
-  knowledge_chunks(✅已建表) · recipes(✅已建表)
-  · user_profile(⏳待建,含 preferences 字段,D25)· diet_log(⏳待建) · conversation_sessions(⏳待建)
-  · conflict_rules(⏳仍是 JSONL,未进库)
+  knowledge_chunks(✅已建表并灌过 5837 条) · recipes(✅已建表)
+  · user_profile / diet_log / conversation_sessions / messages / conflict_rules / user_dish_aliases(✅均在 `db/schema.sql`，真实 Postgres 跑过)
+  · conflict_rules 源文件仍是 `evals/conflict_rules.jsonl`，经 `db/load_conflict_rules.py` 幂等灌库
 
-Skills(按需加载,D22,⏳全部待写):
-  菜谱/购物清单模板 · 调和层 rubric(含 harm-reduction 语气原则,D25)· 核查 pass 检查清单(含候选评估判定规则,D25)
+Skills(按需加载,D22):
+  ✅ 调和层 rubric · 核查 pass 检查清单 · CCMQ 问卷题库(引导流程读)
+  ⏳ 菜谱/购物清单模板(文件在,运行时从未 `load_recipe_skill`)
+  ⏳ ED 风险响应话术(仍是短占位；实际模板在 `ed_protection.py`)
 ```
 
 ---
@@ -67,16 +73,18 @@ Skills(按需加载,D22,⏳全部待写):
 
 | 表 | 用途 | 关键字段 | 索引 | 状态 |
 |---|---|---|---|---|
-| `knowledge_chunks` | RAG 向量检索(D2/D4/D23) | `chunk_id`(唯一) · `domain`(`tcm`\|`nutrition`) · `text` · `metadata JSONB` · `embedding vector(1024)` · `embed_model` | `domain` · `source_file` · HNSW(`embedding`,cosine) | ✅ 建表 SQL 写好并 review 过;**未在真实 Postgres 上跑过**(项目尚无已部署实例) |
-| `recipes` | 按食材精确查菜谱(D24) | `name` · `ingredients TEXT[]` · `instructions TEXT[]` · `source` | GIN(`ingredients`) | ✅ 建表 SQL 写好;`db/load_recipes.py` 对 2000 条真实数据做过 dry-run(仅解析,未连库) |
+| `knowledge_chunks` | RAG 向量检索(D2/D4/D23) | `chunk_id`(唯一) · `domain`(`tcm`\|`nutrition`) · `text` · `metadata JSONB` · `embedding vector(1024)` · `embed_model` | `domain` · `source_file` · HNSW(`embedding`,cosine) | ✅ 建表 SQL 在真实 Postgres 跑过；BGE-M3 全量灌过 5837 条(tcm 4447 + nutrition 1390) |
+| `recipes` | 按食材精确查菜谱(D24) | `name` · `ingredients TEXT[]` · `instructions TEXT[]` · `source` | GIN(`ingredients`) | ✅ 建表 SQL 在真实 Postgres 跑过；`query_recipes_by_ingredients` 已实现 GIN 查询 |
 
 ⚠️ **`recipe_xiachufang.json` 的 5000 条 chunk 目前挂在 `knowledge_chunks` 的哪个 `domain`**:表的 `CHECK` 约束只允许 `tcm`/`nutrition` 两个值,这 5000 条 recipe chunk 实际落在 `nutrition` domain 下(靠 `source_type` 字段区分是不是菜谱)。D24 已经把"按食材精确查"这条主路径收窄到走 `recipes` 表,这些 chunk 的职责收窄为"给定模糊意图时的语义召回补充"(D24 第 2 点)。写检索工具时(`retrieve_nutrition`)要意识到结果里可能混着菜谱 chunk,必要时按 `source_type` 过滤。
 
-### 1.2 待建表(有设计,SQL 未写)
+### 1.2 用户/会话/规则表(设计如下；SQL 已写入 `db/schema.sql` 并在真实 Postgres 跑过)
+
+> 本节标题历史上叫「待建表」。字段设计仍以本表为准；**建表本身已经做完**。Alembic 迁移仍未把 `schema.sql` 收成第一份 migration(ENGINEERING §4.1 技术债)。
 
 | 表 | 用途 | 建议字段 | 索引/约束 | 对应决策 |
 |---|---|---|---|---|
-| `user_profile` | 常驻上下文的来源:体质、过敏原、补剂、目标标签、口味与情境偏好 | `id` · `constitution TEXT`(主体质,CCMQ 九分类之一)· `constitution_secondary TEXT[]`(次要体质/体质夹杂,D28)· `constitution_source TEXT`(`self_reported`\|`ccmq_computed`\|`unconfirmed`,D28)· `constitution_confirmed_at` · `allergens TEXT[]` · `supplements JSONB` · `goal_tags TEXT[]` · `preferences JSONB`(忌口/口味耐受/长期性用餐场景限制,如"不吃香菜""能吃辣""办公室没法热饭",D25)· `updated_at` | GIN(`allergens`);V1 单用户可以只有一行,但字段里留 `user_id` 给以后扩展 | D5 · D16 · D25 · D28 · PRD §10.2 人在环 |
+| `user_profile` | 常驻上下文的来源:体质、过敏原、补剂、目标标签、口味与情境偏好、所在城市与时区 | `id` · `constitution TEXT`(主体质,CCMQ 九分类之一)· `constitution_secondary TEXT[]`(次要体质/体质夹杂,D28)· `constitution_source TEXT`(`self_reported`\|`ccmq_computed`\|`unconfirmed`,D28)· `constitution_confirmed_at` · `allergens TEXT[]` · `city TEXT`(自然语言城市名,`query_weather` 的 `city` 参数直接取这个字段,不用每次对话都问,D30)· `timezone TEXT`(IANA 时区名,`query_diet_log` 相对日期解析的权威依据,不从 `city` 反查,D30)· `supplements JSONB` · `goal_tags TEXT[]` · `preferences JSONB`(忌口/口味耐受/长期性用餐场景限制,如"不吃香菜""能吃辣""办公室没法热饭",D25)· `updated_at` | GIN(`allergens`);V1 单用户可以只有一行,但字段里留 `user_id` 给以后扩展 | D5 · D16 · D25 · D28 · D30 · PRD §10.2 人在环 |
 | `diet_log` | 饮食记录明细,供 `query_diet_log()` 聚合查询 | `id` · `user_id` · `logged_at`(这顿饭实际发生的时间,用户输入或按时段规则推断,幂等键用它)· `recorded_at TIMESTAMPTZ DEFAULT now()`(系统实际写入时间,审计用,可能晚于 `logged_at`,比如补记)· `meal_type TEXT`(早餐\|午餐\|晚餐\|夜宵\|下午茶\|加餐\|未知,§4.2 按关键词/时段确定性推断,不额外调模型) · `raw_input TEXT` · `dishes JSONB`(拆解后的菜品) · `ingredients TEXT[]` · `food_properties TEXT[]`(中医食性标签,如"温/寒/平") · `idempotency_key TEXT UNIQUE` | `(user_id, logged_at DESC)` · `(user_id, meal_type)` · GIN(`ingredients`) · `idempotency_key` 唯一约束 | D18 · ENGINEERING §1.2 写路径幂等键 `(user_id, logged_at, raw_input_hash)`;`meal_type`/`recorded_at` 填补此前 PRD/DECISIONS 均未提及的空白 |
 | `conversation_sessions` / `messages` | 会话历史原文,供分层压缩读取和生成摘要 | `session_id` · `turn_index` · `role` · `content` · `compression_tier`(0/1/2/3)· `created_at` | `(session_id, turn_index)` | D8 · §5.3 分层压缩 |
 | `conflict_rules` | 冲突规则表迁移进库,供调和层按体质/目标结构化查询,而非把 40 条整份塞进 prompt | 对齐 `evals/conflict_rules.jsonl` 现有字段:`rule_id` · `tcm_position/source` · `nutrition_position/source` · `relation` · `resolution` · `resolution_rationale` · `confidence` · `evidence_level` · `applicable_constitutions TEXT[]` · `applicable_goals TEXT[]` · `source_status` | GIN(`applicable_constitutions`) · GIN(`applicable_goals`) | D23(关系表建模)· `evals/README.md` |
@@ -86,7 +94,9 @@ Skills(按需加载,D22,⏳全部待写):
 
 ⚠️ **体质字段为什么要拆成"主 + 次 + 来源 + 确认时间"四个字段,而不是一个 `TEXT`(D28)**:CCMQ 简版问卷计分常见"体质夹杂"——多个体质分类同时达标,不是异常情况,只取分数最高的一类会丢信息。`constitution_source` 区分这条信息是用户自己报的还是问卷算出来的,直接影响 TCM SubAgent 给建议时该用多确定的语气;`constitution_confirmed_at` 让"这条信息是多久前确认的"可查询,支撑以后"提醒用户重新测一次"这类产品功能,而不是让系统自己悄悄按饮食记录去猜测/漂移体质(体质是相对稳定的个人属性,不该跟着某一餐饭自动变化)。`constitution` 为空时 TCM SubAgent 的降级行为见 §11.3。
 
-⚠️ **`conflict_rules.jsonl`(40 条,18 条 verified/22 条 needs_source)现在是纯文件,不在 Postgres 里。** 调和层要能"按体质/目标标签查命中的规则"(§6 步骤 5),这个查询模式和 `recipes` 表的 GIN 包含查询是同一类问题(D24 的精神:精确/结构化过滤查询该走关系表,不该走模型自己在 prompt 里翻 40 条规则)。建表后 `evals/conflict_rules.jsonl` 变成"人工编辑的源文件",经一个幂等 ingest 脚本(`ON CONFLICT (rule_id) DO UPDATE`,呼应 ENGINEERING §4.1)灌进 `conflict_rules` 表,查询走表,编辑仍然走 JSONL——两者不冲突,JSONL 保留作为 diff 友好的编辑格式。
+✅ **`conflict_rules` 已进库**：`evals/conflict_rules.jsonl`(40 条,18 verified / 22 needs_source)经 `db/load_conflict_rules.py` 幂等同步进表；调和层按体质/目标查命中行(`backend/agents/conflict_rules_lookup.py`)。JSONL 仍是人工编辑的源文件。
+
+✅ **`conflict_gaps.jsonl` 已写**：双侧都产出结论且 `matched_rules` 为空时追加一行（`backend/agents/conflict_gaps.py`）。写盘失败只记日志，不让请求失败。
 
 `conflict_gaps.jsonl`(PRD §11:冲突且无规则命中时记录)按 PRD 原文就是文件,不建表——它是"下一版规则表的扩充素材",人工审阅后手动并入 `conflict_rules.jsonl`,不需要查询能力,建表反而多余。
 
@@ -113,12 +123,14 @@ D7 修订的结论:工具层整体经**本地 MCP server**(stdio/localhost,不�
 | `retrieve_nutrition` | `(query: str, top_k: int = 5, filters: dict \| None = None) -> list[RetrievedChunk]` | `knowledge_chunks WHERE domain='nutrition'` | Nutrition SubAgent(同上) |
 | `query_recipes_by_ingredients` | `(ingredients: list[str], match: "any"\|"all" = "all", limit: int = 20) -> list[Recipe]` | `recipes` 表,GIN `&&`/`@>`(D24) | 菜谱生成工具(D17)· 完整推荐分支的输出组装步骤 |
 | `query_weather` | `(city: str, date: str \| None = None, include_recent_days: int = 3) -> WeatherInfo` | Open-Meteo,3h 缓存(ENGINEERING §3),熔断后回退节气表(ENGINEERING §1.3) | 中枢 agent · TCM SubAgent(判断"气候骤变"需要近几日数据,PRD §3.1) |
-| `query_diet_log` | `(time_range: str, aggregation: "by_ingredient"\|"by_property"\|"by_nutrient"\|"raw", limit: int \| None = None) -> DietLogSummary` | `diet_log` 表 | 中枢 agent(记录回顾分支、主动发现"连续同主料")· TCM SubAgent(食性分布)· Nutrition SubAgent(营养素构成) |
+| `query_diet_log` | `(time_range: str, aggregation: "by_ingredient"\|"by_property"\|"by_meal_type"\|"raw", limit: int \| None = None) -> DietLogSummary` | `diet_log` 表 | 中枢 agent(记录回顾分支、主动发现"连续同主料"/夜宵频率)· TCM SubAgent(食性分布)· Nutrition SubAgent(营养素构成部分待 `by_nutrient` 就位) |
 | `write_memory` | `(category: "critical"\|"daily_log", payload: dict, idempotency_key: str \| None = None) -> WriteResult` | `category=critical` → 写 `user_profile`(需人在环确认);`category=daily_log` → 写 `diet_log`(需 `idempotency_key`) | **仅中枢 agent**;SubAgent 不持有这个工具(见 §2.3) |
 
 `filters` 字段(`retrieve_tcm`/`retrieve_nutrition`)对应阶段 2.4 提到的混合检索:`WHERE 体质匹配 AND source_status='verified' ORDER BY embedding <=> $1`,是向量检索前的结构化预筛,不是另一套检索机制。
 
-⚠️ **`query_diet_log` 的 `time_range` 要接受相对表达("昨天""今天""上周"),不能只接受绝对日期区间**——"我昨天晚上吃了什么"这类记录回顾分支的问法(D25)天然是相对日期。解析这类表达需要一个明确的时区基准,建议用 `user_profile` 里用户所在城市推出的时区,而不是服务端所在机器的系统时区(两者在部署到云端时大概率不一致,是一个容易踩的坑)。具体用哪个基准目前还是待决问题(`DECISIONS.md` 待决问题表),这里先把坑点写清楚。
+⚠️ **`by_nutrient` 暂不对调用方暴露。** 它需要把 `ingredients` 关联到营养素数据(PRD §附录提到的 USDA FoodData Central),这条关联目前在库里完全不存在,没有数据摄取脚本也没有映射表。`query_diet_log()` 实现里仍保留这个聚合维度并显式抛 `NotImplementedError`(装作算出一个数字比报错更危险),但 MCP 工具的 JSON Schema(`backend/mcp_server/registry.py`)已从 `aggregation` 枚举里移除它,不让 SubAgent 把它当成可用选项去调——等 FDC 数据接入和 ingredient→nutrient 映射建好后再加回来。
+
+✅ **`query_diet_log` 的相对日期 + 时区已落地(D30)**：接受"昨天""今天""上周""最近 N 天"等相对表达。时区按 `user_profile.timezone` > `DIET_EXPERT_TZ` > `Asia/Shanghai` 三层兜底，不从 `city` 反查。`by_nutrient` 仍显式 `NotImplementedError`。
 
 ⚠️ **"候选评估"分支(D25)不需要新工具。** 它和"单领域"/"完整推荐"复用完全相同的 6 个工具,区别只在 SubAgent 收到的任务描述从"生成一份新方案"变成"评估我给你的这个/这几个候选",这是 prompt 层面的任务框架切换,不是工具能力的缺口——遇到"要不要为新场景加新工具"这类问题时,先看现有工具组合能不能通过换一种任务描述覆盖,这也是 D21/D24 一直坚持的"不加不必要的组件"的同一条原则。
 
@@ -130,7 +142,7 @@ D7 修订的结论:工具层整体经**本地 MCP server**(stdio/localhost,不�
 |---|---|---|
 | 中枢 agent | 全部 6 个,含 `write_memory` | — |
 | TCM SubAgent | `retrieve_tcm` · `query_weather` · `query_diet_log`(只读) | `write_memory`、`retrieve_nutrition`、`query_recipes_by_ingredients` |
-| Nutrition SubAgent | `retrieve_nutrition` · `query_diet_log`(只读) | `write_memory`、`retrieve_tcm`、`query_weather` |
+| Nutrition SubAgent | `retrieve_nutrition` · `query_diet_log` · `query_recipes_by_ingredients`(只读) | `write_memory`、`retrieve_tcm`、`query_weather` |
 | 调和层 | 无工具(只做一次推理,D14"不接收原始检索内容") | 全部 |
 | 核查 pass | 无工具(只做判定,D15"不做规划、不调工具") | 全部 |
 
@@ -142,9 +154,13 @@ stdio 或 localhost-only(不对外网络暴露),与业务进程同机部署。�
 
 ### 2.5 状态
 
-⏳ **完全未实现。** `db/embed_bge_m3.py` 里的 `search` 子命令是这个能力最接近的雏形(直接查 `knowledge_chunks`),但它是独立 CLI 脚本,不是 MCP 工具,没有走协议层,也没有权限分层。真正的 MCP server 代码(`backend/mcp_server/` 下应该有的 `server.py` 和每个工具的实现)一行没写。
+✅ **MCP server + 权限分层已落地**：`DietExpertMcpServer` 按角色 session 返回白名单(`backend/mcp_server/roles.py`)。已实现并有测试：`retrieve_tcm` / `retrieve_nutrition`(混合检索)、`query_diet_log`、`write_memory`(critical + daily_log)、`query_recipes_by_ingredients`、`query_weather`(Open-Meteo + 3h 缓存 + 连续 3 次失败回退节气表)。MQE/HyDE 明确排后(§2.6)。
 
-### 2.6 检索增强:MQE / HyDE(agentic RAG 的后置增强,非当前重点)
+### 2.6 检索增强:MQE / HyDE / 混合检索
+
+⚠️ **MQE + 混合检索(dense+sparse)代码已实现(2026-08-30)，但真实跑分显示是喜忧参半的结果，不是单纯的提升**：`backend/mcp_server/tools/_retrieval_common.py`。触发条件("现在不做,放在后面"的三条理由)已经满足——`EVALUATION.md` §7.7 跑出了官方 Recall@5(组平均)=76.7%(刚过 Launch 70%)的生产检索 baseline，失败案例的共同模式正是本节原文点名的"一句话里混了多个信息点,单一 query 被其中一个信息点主导"，不是凭直觉引入复杂度。实现细节、设计取舍(为什么融合排名而不是融合分数、为什么 score 字段的语义在融合后变了、为什么要在一个同步函数里桥接异步 LLM 调用)全部写在 `_retrieval_common.py` 模块文档"检索评分方法优化"一节，这里不重复；决策记录见 `DECISIONS.md` D35。**接入后重跑同一个评测**(`EVALUATION.md` §7.7.3)：strict 从 60.0%提升到 66.7%，但官方 Recall@5(组平均)**从 76.7%降到 73.3%**——定位到一题因为稀疏(词法)通道把两条词面重合度高但内容更泛的"体质定义描述"排到了具体饮食指导章节(gold chunk)前面。这次跑分同时撞上 dev 档免费模型限流导致 MQE 大半未真正生效，所以"MQE 真正生效后综合效果是正是负"这个问题目前还没有答案——已决定不为了拿到这个数字继续消耗真实 prod 档 API 配额，如实标注为待后续验证的已知限制，不是已经验证过的净提升。**HyDE 仍未做**——两个方向不是非此即彼,继续按下面"为什么现在不做"的方法论，等后续 eval 需要时再评估。
+
+**原始设计动机与方法论(仍然有效,供 HyDE 及未来类似决策参考)**：
 
 **先说清楚这条和 §2.1 提到的"agentic"是两件不同的事**:§2.1 说的是"要不要再调用一次检索工具"这个决策交给 SubAgent(D20 已经这样定了,现在就生效);本节说的是"每一次调用 `retrieve_tcm`/`retrieve_nutrition` 内部,检索这个动作本身要不要做得更聪明"——后者是工具实现内部的增强,不是新增一个 agent 决策点,不需要修改 D20 的"五处 agent 行为"清单。
 
@@ -211,7 +227,7 @@ LLM 的原生 function-calling(tool_use)          MCP 协议
 
 ### 3.4 状态
 
-⏳ **完全未实现。** Agent Loop 本身(接收 tool_use → 执行 → 喂回结果 → 判断终止)也还没有代码;roadmap 阶段 1.1 里安排了 Hello-Agents 第 4 章的手写练习作为这部分的"肌肉记忆"前置,阶段 4.2 第 4 项("中枢 agent + Agent Loop")是真正落地的地方。
+✅ **已实现**：`backend/agents/agent_loop.py` `run_agent_loop()`（tool_use → MCP 执行 → 喂回 → 无 tool_calls 终止；`max_tool_calls` 触顶抛 `AgentLoopResourceLimitError`）。SubAgent 复用同一 loop（`max_tool_calls=15` + `stall_round_limit=3`）。路由在 `backend/agents/routing.py`，分发在 `dispatch.py`，不再是单一的 `router.py`。
 
 ---
 
@@ -350,15 +366,25 @@ D20 的五处"agent 行为"里,只有行为点 #1(TCM/Nutrition SubAgent 自主�
 
 ### 4.6 状态
 
-⏳ **完全未实现。** `user_profile`(含 D28 新增体质字段)、`diet_log`、`conversation_sessions`、`dish_ingredient_map` 四张表都没有 schema;压缩组件(含 D27 的优先级表/结构化摘要)、关键事实扫描、状态提示、`write_memory` 工具均无代码。roadmap 阶段 7 是这部分的主战场。
+✅ **"记录"分支(§4.2 步骤1-3)已实现**(2026-08-27):`user_profile`/`diet_log`/`conversation_sessions`/`conflict_rules`/`user_dish_aliases` 表 schema 均已落地(阶段4)；三级查找(`backend/memory/dish_decomposition.py`)+ 晋升计数(`backend/memory/dish_alias_promotion.py`)+ `write_memory` 的 `category="daily_log"` 分支均已实现并接入 `api/main.py` 的 log_write 分支，真实端到端验证过：已知菜名(全局表命中,不打LLM)、未知食物(LLM 兜底,含剥离 markdown 代码块围栏这个真实踩到的坑)、幂等去重(同一分钟内重复提交不产生第二行)、个人别名晋升(第3次命中真实置promoted_at)、过敏原即时警示(警示但不阻断写入——记录的是已发生的事)均在真实本地 Postgres + 真实 Anthropic Haiku 上跑通。
+
+⚠️ **`dish_ingredient_map` 不是 Postgres 表**——直接读 `knowledge/food/dish-decomposition.jsonl`(44 条)到内存字典，§1.2"待建表"清单本来就没有它，44-200 条规模建表是过度设计。
+
+✅ **§4.3 关键事实跨分支扫描已实现**(2026-08-28)：`backend/memory/critical_fact_scanner.py`(纯扫描，不碰数据库/MCP，100% 单测覆盖)+ `api/main.py` `_stream_chat_inner` 的接线(在路由判断之前、onboarding 检查之后跑一次，命中就走 MCP client 同步调 `write_memory(critical)`，并把合并后的画像用于**同一轮**请求剩余流程——不用等下一轮才生效，直接回应 §4.3 原文举的例子"问'今天该吃什么'时顺带提一句'对了我对虾过敏'")。扫描到的是**类别**(甲壳类/鱼类/乳制品/麸质/芝麻/花生/坚果/大豆/蛋类)而不是原文用词，类别命名对齐 `output_filters.py` 的 `HIDDEN_ALLERGEN_SOURCES`，否则新写入的类别不会被那边的隐藏来源比对认出来。附带修的两处缺口：`write_memory.py` 的 `_CRITICAL_COLUMNS` 此前漏了 `supplements` 列(传这个字段会被当成未知字段直接拒绝)；`UserProfileContext`/`_row_to_context` 此前完全不读 `supplements`。⏳ **仍未做**：`UserProfileContext.supplements` 目前只写不读——SubAgent/调和层/核查 pass 尚未消费这个字段(该怎么影响生成的建议是单独的设计问题，不该在这次"落库"任务里顺手决定)；`dose` 恒为空(自由文本解析不出剂量)；过敏声明只认"对X过敏/X过敏/过敏原是X"这类明确句式，不含糊到"提一句食材就算"。
+
+✅ **§4.4 分层压缩算法已实现**(2026-08-28)：`backend/memory/compression.py`——压缩优先级表(`compress_retrieved_chunks()`)、D27 固定模板的结构化归档摘要(`TurnRecord`/`ArchivedSummary`/`build_archived_summary()`，纯确定性组装，不调用 LLM)、两级触发的判断函数(`should_compress_retrieval()`/`should_archive_tier1()`/`select_turns_to_archive()`/`is_session_idle()`/`drop_oldest_until_within_budget()`)均已实现，全部是不碰数据库/FastAPI 的纯函数。新增 `backend/llm/model_capabilities.py` 落实"不同 LLM 上下文窗口不同"这条要求——压缩阈值按 `context_window_for_model()` 缩放 PRD §12.3 假设的预算(只收紧、不放大)，`LLM_CONTEXT_WINDOW_OVERRIDE` 环境变量提供不改代码就能生效的配置入口，细化 D13"能力档案不锁定具体模型"的原则，完整论证见 `DECISIONS.md` D27 补充。`tests/unit/memory/test_compression.py`(含一条 20 轮对话、第2轮披露过敏原、验证结构化摘要在 Tier1→Tier2→Tier3 流转后仍可被 `find_summaries_mentioning()` 查到的端到端场景测试)+ `tests/unit/llm/test_model_capabilities.py` 全过。
+
+✅ **§4.4.1 中枢会话历史两级触发已接进真实 `/api/chat` 请求生命周期**(2026-08-28)：新增 `backend/memory/session_store.py`——`db/schema.sql` `messages` 表补了 `branch`/`conclusion`/`cited_source_ids`/`rejected_suggestions`/`triggered_guardrails` 五列(D27 补充)，`compression_tier` 取值约定见该表注释。`record_turn()`(步骤9写入+顺带触发 Tier1→Tier2 归档检查)、`maybe_fold_idle_session()`(新消息到达是这个项目里"会话是否空闲"唯一天然的检查时机，没有后台调度器)、`load_session_history()`(步骤2读取，超预算时用 `drop_oldest_until_within_budget()` 做同步兜底)均已实现，`tests/integration/test_session_store.py`(12条，真实本地 Postgres)全过。`api/main.py` 新增 `get_session_history_loader`/`get_turn_recorder`/`get_idle_session_folder` 三个 DI 注入点(同 `get_complete_fn` 的既有模式，测试换成空操作假函数，不会真的写真实数据库、也不会因为多个测试复用同一个硬编码 `session_id` 互相污染)；`_TurnAccumulator`/`_parse_sse_chunk` 观察 `dispatch_branch()`/`stream_multi_task()` 已经产出的标准化 SSE 事件流(token=结论、source=引用、guardrail=触发的guardrail/被拒建议)重建 `TurnRecord`，不改 `backend/agents/dispatch.py` 任何函数签名去传递一个累加器对象；写入用 `asyncio.create_task(asyncio.to_thread(...))` 触发、不 `await`，这是没有 Celery 这类任务队列的项目里"不占用当前请求响应时间"的实际实现方式。读侧(会话历史→SubAgent `task_input`)只接给 `fact_query`/`single_domain`/`candidate_eval`/`full_recommend` 四个真的会派发 SubAgent 的分支(`dispatch.py` 新增 `_compose_task_input()`)，`log_write`/`log_review`/`other` 三条分支不需要跨轮次上下文也能正确处理这一轮，不接线；`tests/unit/agents/test_dispatch.py`/`tests/unit/api/test_turn_accumulator.py` 覆盖组装逻辑本身，`test_api_chat_sse.py::test_session_history_is_forwarded_into_subagent_task_input` 用一个记录 `complete()` 收到的 `messages` 的假 provider 验证读侧确实端到端接通(写侧是 fire-and-forget 的后台任务，对着这种一次性任务的完成时序做断言会是一条不稳定的测试，改为真实跑一次 `curl` + 直接查 Postgres 的手工验证：`fact_query`/`other`/`single_domain` 三种分支各发一条真实消息，`messages` 表里都出现了带正确 `branch`/`conclusion`/`triggered_guardrails` 字段的行)。⏳ **仍未接线**：SubAgent 内 Level1 触发(检索结果压缩)——需要 `run_agent_loop`/`_subagent_common.py` 在循环过程中维护结构化的 chunk 列表(目前只把工具结果序列化进 `messages`)，"未被引用"这个判断在 SubAgent 自己的答案生成出来之前无法有效定义，接线方式还需要专门设计，不是这次顺手就能做的；`user_dish_aliases`/`diet_log` 这类结构化业务数据不受影响，这条压缩只管会话历史+检索结果。§4.2 步骤4"人在环确认"简化为"先幂等写入、再展示结果"(`/api/chat` 是单发 SSE，没有编辑一条已记录条目的端点)，不是原文那种"先展示、等确认/修改"的往返。
+
+✅ **两处补漏(2026-08-29)**：(1) `ArchivedSummary` 补了 `tier` 字段(默认 Tier2)，`drop_oldest_until_within_budget()` 之前对 Tier2/Tier3 一视同仁，只按"列表里最旧"丢，和文档"优先丢 Tier3"的描述对不上——现在真的按 tier 优先级丢：Tier3(空闲/已结束会话)最旧的先丢，丢完仍超预算才动 Tier2(仍在进行中)，两轮都不打乱剩余记录的时间顺序；tier 常量(`TIER_RAW`/`TIER_ARCHIVED_ACTIVE`/`TIER_ARCHIVED_IDLE`)顺带从 `session_store.py` 挪到 `compression.py`(`ArchivedSummary` 本身需要用到，`session_store.py` re-export 保持既有调用方写法不用改)。(2) 两个真实的异步缺口：`api/main.py` 的 `asyncio.create_task(asyncio.to_thread(turn_recorder, ...))` 之前没有保留返回值的强引用——asyncio 文档明确警告事件循环只持有 task 弱引用，未被引用的 task 有可能在跑完前被 GC，落库/归档会悄无声息地根本没发生；现在存进模块级 `_background_tasks` 集合，`add_done_callback` 结束后自动摘除。`session_store.record_turn()` 里 `SELECT MAX(turn_index)+1` 后紧跟一条独立 INSERT，中间没有锁，同一个 session_id 并发写入可能撞 UNIQUE 约束、输的一方被静默吞掉、那一轮永久性地没有落库；现在用 `pg_advisory_xact_lock(hashtext(session_id))` 序列化同一 session_id 的写入(不同 session_id 互不阻塞，锁随事务提交自动释放)。`tests/unit/memory/test_compression.py` 新增 4 条 tier 优先级测试，`tests/integration/test_session_store.py` 新增一条 16 线程并发写入回归测试(真实本地 Postgres)。
 
 ---
 
 ## 5. 用户交互 Pipeline(完整请求生命周期)
 
-### 5.1 分级路由回顾(D12/D25,六条分支)
+### 5.1 分级路由回顾(D12/D25,七条分支)
 
-D25(2026-08-26)按真实用户问法走查后,把原来的四条分支扩为六条——新增"记录回顾"与"候选评估",完整论证见 `DECISIONS.md` D25。
+D25(2026-08-26)按真实用户问法走查后,把原来的四条分支扩为六条——新增"记录回顾"与"候选评估",完整论证见 `DECISIONS.md` D25。D33(2026-08-27)再补第七条"other",落实 D20 五处 agent 行为点第 3 条 + `PRD.md` §17 开放问题,完整论证见 `DECISIONS.md` D33。
 
 | 分支 | 触发条件 | 路径 | 目标延迟 |
 |---|---|---|---|
@@ -368,12 +394,89 @@ D25(2026-08-26)按真实用户问法走查后,把原来的四条分支扩为六�
 | 候选评估 | 给定具体候选,要求判断("这个能不能吃""黄焖鸡和米线选哪个""已经吃了大补的,还能吃什么") | 双派发(任务框架=评估候选)+ 视候选数量决定是否调和 + 核查 | < 20s |
 | 单领域 | 明确只涉及一侧体系的问题 | 单派发 + 核查 | < 14s |
 | 完整推荐 | 需要综合判断的问题("今天该吃什么") | 双派发 + 调和 + 核查 | < 35s |
+| other | 不属于以上六种的问候/致谢/告别、食物相关但检索范围外的问题、完全无关的问题(D33) | 一次 `complete()` 直接回应,不经过 SubAgent、不经过核查 | < 3s |
 
 路由判断本身由谁完成(中枢模型 / 轻量分类器 / 规则)是待决问题(`DECISIONS.md` 待决问题表),留到实现路由时定;不管选哪种,M13(路由准确率)都要能独立测量。**"记录回顾"vs"事实查询"、"候选评估"vs"完整推荐"这两组分支容易被合并,不要合并**——前一组的检索目标不同(用户自己的数据 vs 静态知识库),后一组的核查判定标准不同(候选评估的核查规则见 §6),合并会让 M13/M14 的判据变得模糊,详见 D25。
 
-### 5.2 完整推荐分支——详细步骤
+### 5.1.1 一句话包含多个意图时的多任务分发(D32,2026-08-27 新增)
+
+§5.1 的六分支模型隐含一个假设:**一条消息只对应一个分支**。真实使用中用户会在一句话里夹带多个独立意图,比如"帮我记录一下中午吃了麻婆豆腐,另外阳虚质应该吃什么"——这句话同时是一条"记录"和一条"单领域"提问。在这条设计补上之前,`classify_route` 按固定优先级(记录回顾>记录>候选评估>事实查询>单领域>完整推荐)只会命中排序最靠前的那个分支,**整句原文**被喂给那一个分支的处理逻辑,其余意图不会被路由到任何地方,直接消失,用户对此毫无感知。
+
+**触发条件(刻意保守,宁可漏检不误判)**:
+
+```
+1. 用一组中英双语的"意图连接词"(中文:另外/顺便/顺便问一下/顺便问下/还有/再问一下/再问下;英文:by the way/also/additionally/one more thing/another thing/and also/oh and/btw,`\b` 词边界+大小写不敏感,避免命中"salsa"这类英文单词内部的子串)
+   把消息切成若干候选片段——连接词本身按长度从长到短匹配并允许连续多个
+   连接词粘在一起当一个切分点(比如"顺便再问一下"不会被拆成"顺便"+"再问一下"
+   两段)
+2. 对每个候选片段独立跑 classify_route()(确定性规则,不调用 LLM)
+3. 只有同时满足以下两条才判定为"真的是多任务"，否则整句话按 §5.1 原有的
+   单分支路径处理(等价于这条设计生效之前的行为，不引入任何回归)：
+   a. 每个片段都必须靠规则真正命中(`rule_matched=True`)，不能有任何一个
+      片段落到"规则没命中,兜底当完整推荐"这种模糊状态——一旦有一个片段
+      判不准，整条消息的可信切分就站不住，宁可不拆
+   b. 至少两个片段的分支彼此不同——同分支的多个片段(比如两句话都是"记录")
+      不需要走这条新路径，各分支自己的处理逻辑(比如"记录"分支的三级查找
+      本来就支持一次解析出一句话里的多个菜品)已经能正确处理，硬拆反而是
+      重复劳动
+```
+
+**执行方式**:每个子任务**顺序**执行，复用各自分支已有的完整处理逻辑(不重新实现路由到的任何一条分支)——SubAgent 双派发、调和、核查这些步骤原封不动地在子任务内部跑一遍。不并发执行：写入类(记录)子任务必须先完整落库，不应该被其他子任务的并发调度打断或产生时序上的不确定性。
+
+**SSE 协议扩展(§10.3 七选一场景之外的新增,只在多任务分支里出现)**：
+
+```
+event: task       data: {"index": 0, "total": 2, "branch": "log_write", "text": "..."}
+                   # 子任务开始前先声明这是第几个/共几个/走哪条分支/切出来的原文
+（该子任务自己的 token/source/guardrail 事件序列，与单任务路径完全一样）
+event: task_done  data: {"index": 0}
+                   # 子任务自己的 done 被这一层换成 task_done——多任务轮次
+                   # 只有最后一条才是真正的 done，前端"看到 done 就是这一轮
+                   # 结束"的既有约定不用改
+...(下一个子任务重复 task → 事件序列 → task_done)...
+event: done        data: {"trace_id": "..."}
+```
+
+### 5.1.2 多任务的 LLM 兜底(D32 补充,2026-08-27)
+
+真实使用后发现 §5.1.1 纯规则切分漏了两类情况,用户明确要求补上:
+
+1. **连接词存在,但某个片段规则没命中**(比如"帮我记录一下中午吃了麻婆豆腐,另外我今天心情不好"——第二段规则匹配不到任何分支)。原来的行为是整体放弃切分,退回把整条原文当单分支处理,第二个意图照样丢失。
+2. **压根没用连接词的隐式多意图**(比如"麻婆豆腐好吃吗我中午吃了")。§5.1.1 原来的设计明确把这类情况列为"不做"。
+
+**`classify_turn()` 取代 `api/main.py` 原来"先调 `classify_multi_task()`,不行再调 `classify_route_async()`"这两段独立调用,合并成一次决策,保证最坏情况下一条消息也只产生一次 LLM 调用**:
+
+```
+1. classify_multi_task()：连接词切分 + 每段都规则命中 + 分支不同 → 零 LLM
+2. 无连接词信号(切不出≥2段)且整句 classify_route() 规则命中 → 当成单任务,零 LLM
+   有连接词信号但没通过步骤1(至少一段没命中，不是因为"同分支")→ 判定为"规则拿不准"
+3. 步骤1、2都没能确定 → 一次 LLM 调用，模型自己判断这句话该拆成几个任务，
+   输出 {"tasks":[{"text":...,"branch":...,"domain_hint":...}, ...]}（长度可以是1）
+   调用失败/返回格式不对 → 有规则命中结果就用规则结果，否则退回 full_recommend
+```
+
+"连接词存在但同分支"这种情况(比如两句话都是"记录")**不**触发 LLM——不是规则拿不准,是这条新路径本来就不需要介入,各分支自己的处理逻辑(比如"记录"分支一次能识别多个菜品)已经能正确处理。
+
+**真实验证时发现的残留缺口(诚实记录,不是这次能解决的)**：如果整条组合消息**恰好**被某个分支的正则在不该匹配的位置命中(没有连接词、规则却"confidently"给出一个结果),`classify_turn()` 目前不会触发 LLM 复核。真实例子:`"我想知道气虚质应该怎么调理饮食,我昨天都吃了什么给我查一下"`——`_LOG_REVIEW` 的正则"我.{0,8}(昨天|...).{0,12}吃了什么"在整句里搜到了子串命中,`rule_matched=True`,直接当成单一 log_review 任务,前半句"气虚质怎么调理"完全丢失,LLM 兜底压根没被触发。要补上这种情况需要放弃"只在规则拿不准时才打LLM"这条边界,变成对每一条消息都做一次 LLM 复核——这是明显更大的成本/延迟代价,是否要做需要再决定,不属于这次"兜底没考虑到的情况"这个范围内的修复。
+
+**明确仍不做的**:
+- **不支持任务之间有依赖关系**(比如先记录、再基于刚记录的内容做推荐)。各子任务互相独立执行,谁也不知道谁的存在,这也是为什么执行顺序按切分出现的先后而不是按分支类型排序。
 
 这是最复杂的一条路径,也是简历叙事里"双专家 + 调和"的核心展示对象。
+
+### 5.1.3 统一的人在环追问机制(D33,2026-08-27 新增,落实 D20 #3)
+
+覆盖记录(log_write)+ 事实查询/单领域/候选评估/完整推荐四个走 SubAgent 的分支——不是只有 log_write 单独实现,用户明确要求候选评估也要做,选择在 SubAgent 层做一套通用机制。
+
+**标记约定**(`backend/agents/citation.py`,和引用标记 `[source: chunk_id]` 并列的另一个约定):SubAgent system prompt 里新增指令——只有判断对象本身是谁/是什么都不确定时(比如用户说"这个""这道菜"却没指明具体是哪种食物)才需要反问,这种情况下整条回复严格以 `[NEED_CLARIFICATION]` 开头,后面紧跟需要用户补充的具体问题;判断对象已经明确、只是外围细节(健康状况细节/食用量/具体做法)不全时,**不**触发反问,按用户画像信息+常规假设给出合理判断。这条范围限定是真实验证(本地真实 Anthropic Haiku)后加上的——最初没有限定范围时,"红烧肉能不能吃"这种已经点名具体菜品的问题也会因为外围细节不全被反问,等同于对每个候选评估都追问一轮,详见 `DECISIONS.md` D33"真实验证踩过的坑"。
+
+**状态存储**:`backend/agents/clarification.py` 的 `ClarificationStore`(仿 `backend/onboarding/session_store.py` 的既有形状),key 用 `session_id` 而非 `user_id`——追问是"这次对话里正在问的一个具体问题",不像 onboarding 是全局一次性状态,不同会话可以各自有不同的待补充问题。
+
+**检查插入点**:`_stream_log_write`/`_stream_single_domain`/`_stream_dual_dispatch` 里,在进入核查(`_verify_and_stream`)/调和(`reconcile_subagent_results`)之前检查 SubAgent 结论有没有命中标记;双派发场景下两侧都成功时先查 TCM 侧、没有再查 Nutrition 侧(谁先命中就用谁的问题,不合并两条)。命中时把 `PendingClarification(original_text, branch, domain_hint)` 存进 `ClarificationStore`,吐一个新 SSE 事件 `clarification`(`{"question": "..."}`)+ 按 `token` 事件把问题文本也吐一遍(兼容不认识新事件类型的旧前端)+ `done`,不再往下走核查/调和。
+
+**恢复与单次上限**(PRD §11"输入模糊→追问一次,仍模糊则记为 unspecified"):`_stream_chat_inner` 在 onboarding 检查之后、路由判断之前,先查 `ClarificationStore` 有没有这个会话的 pending 记录——有就立刻 `clear()`(在重新分发之前就消费掉,不管这次结果如何都不会再问第三次),把当轮消息拼接到原文后面,直接重新分发到当初触发追问的那个分支(`allow_clarification=False`),不重新走路由判断。`allow_clarification=False` 时即使又命中标记也不再问第二次:log_write 走原有的 `dish_not_recognized` guardrail;SubAgent 分支走新增的 `clarification_unresolved` guardrail,直接判定为信息仍然不足。
+
+**和 D32 多任务/onboarding 的交互**:`_stream_multi_task` 每个子任务默认 `allow_clarification=True`,某个子任务触发追问不影响其他子任务照常完成,`PendingClarification.original_text` 存的是切分出来的那个子任务片段,不是整条原始消息,恢复时天然只重跑那一个子任务。onboarding 检查在前,处于 onboarding 流程中时不会走到这里,两者不会同时触发。
 
 ```
 0. 输入防护(截断/指令注入过滤/疾病用药检测) ── §0 总览图①
@@ -396,11 +499,12 @@ D25(2026-08-26)按真实用户问法走查后,把原来的四条分支扩为六�
    输入:两侧结论与依据(≤10k)+ 命中的 conflict_rules(≤2k)+ user_profile(0.5k)
    不接收原始检索内容(避免重新引入上下文污染)
    加载 Skill:调和层 rubric(D22)
-   agent 行为点 #2(D20):依据不足时可回退请求 SubAgent 补充查询(建议上限 1 次,与核查 pass 的重试上限一致,实现后按实测调整)
+   证据不足时执行一次无工具修复调用：根据现有草稿和失败原因删减不支持的具体陈述，
+   或给有限的通用知识加未核验标注；不重跑 SubAgent/检索
 6. 核查 pass(独立调用,D15,≤12k 上下文)
    输入:调和结论全文 + user_profile + 被引用 chunk 原文(不含对话历史)
    加载 Skill:核查清单(D22,PRD §10.1 七条检查项)
-   只拒绝不改写;不通过 → 移除条目或退回调和层(有限次数)
+   硬安全项不通过 → 移除条目；证据类失败 → 一次无工具修复后直接输出
 7. 菜谱/购物清单组装(需要时)
    调用 query_recipes_by_ingredients(D24,精确食材过滤)
    加载 Skill:菜谱/购物清单模板(D22)
@@ -436,7 +540,13 @@ D25(2026-08-26)按真实用户问法走查后,把原来的四条分支扩为六�
 
 ### 5.5 状态
 
-⏳ **完全未实现。** 目前唯一跑通的是 RAG 检索本身(`db/embed_bge_m3.py search` 子命令能查 `knowledge_chunks`,但连不上真实 Postgres 前无法验证),路由、双派发、调和层、核查 pass、前端流式输出全部没有代码。roadmap 阶段 4 的任务 4-9 覆盖这一节的全部内容,且规定了顺序不能乱(后面依赖前面)。
+✅ **五段管线已接通**：`classify_turn` / 七分支 → 单/双 SubAgent → `reconcile` → `verify` → SSE。45s SubAgent / 90s 整链超时已接线(`timeouts.py` + `run_subagent` 的 `wait_for` + `_stream_chat` 的 `aiter_with_timeout`)。
+
+✅ **证据修复**：核查判定依据不足时只调用一次无工具修复 pass，不重跑 SubAgent、
+不重跑检索，也不做第二次硬核查；修复会保留可用内容，并为无本地依据的通用知识
+加明确的未核验标注。✅ **菜谱 Skill**：完整推荐且用户要菜谱/购物清单时加载；
+Nutrition 白名单含 `query_recipes_by_ingredients`。没有独立的「步骤 7 拼 3 日计划」
+管线。✅ **`conflict_gaps.jsonl`** 已写。⏳ **两侧都失败** 仍是 guardrail，没有 naive RAG。
 
 ---
 
@@ -474,28 +584,38 @@ D22 已经决定把哪些能力做成 Skill(而不是常驻 system prompt),本�
 
 ### 6.3 状态
 
-⏳ **五份 Skill 文件本身还没写,`registry.py` 也没有。** D22 只是决定了"要不要做成 Skill"以及"哪些能力该做成 Skill",本节(§6.2)补的是加载机制的具体设计,具体的 rubric 内容(调和层遇到冲突具体该怎么判断立场)、检查清单的判定标准细化、CCMQ 题库与计分口径、ED 响应话术,以及 `registry.py` 本身,都还没有落到代码/文件里。
+✅ **registry + 运行时加载**：`reconciliation_rubric` / `verification_checklist` 在调和层/核查 pass 确定性拼入；`ccmq_questionnaire.md` 已有完整简版题库，由 `onboarding/flow.py` 使用。⏳ **`recipe_and_shopping_list.md` 正文在、Layer 1 已登记，但没有任何调用方调用 `load_recipe_skill()`**——步骤 7 菜谱组装未接线，这份 Skill 目前是死文件。⏳ `ed_risk_response.md` 仍是短占位；实际 ED 话术在 `ed_protection.py` 常量里。Layer 3(`conflict_rules` 命中行)仍由调和层查表拼入。
 
 ---
 
-## 7. LLM Adapter 层(D19,ENGINEERING §1 的落地位置)
+## 7. LLM Adapter 层(D19/D29,ENGINEERING §1 的落地位置)
 
 严格来说这一层不是"agent 设计"的一部分,但所有对模型的调用(路由判断、两个 SubAgent、调和层、核查 pass、输出分类器)都要经过它,放在这里做个索引,细节见 `ENGINEERING.md` §1。
 
-| 职责 | 建议文件 |
+**D29 把这一层拆成两部分**:`adapter.py` 只管可靠性逻辑(重试/熔断/超时/双档选择),不知道背后是哪家服务商;具体"怎么调用某一家模型服务"下沉到 `backend/llm/providers/` 下的 Provider 实现,新增一家服务商不需要碰 `adapter.py` 已经测过的重试/熔断循环。
+
+| 职责 | 文件 |
 |---|---|
-| 超时分层(20s/45s/90s) | `backend/llm/adapter.py` |
+| 超时分层(单次调用 20s;45s/90s 在 `backend/agents/timeouts.py`) | `backend/llm/adapter.py` + `backend/agents/timeouts.py` |
 | 重试 + 指数退避 + jitter | 同上 |
-| 熔断器(按外部依赖分别维护) | 同上 |
+| 熔断器(按外部依赖分别维护;这里只管"主力模型"这一个依赖) | 同上 |
 | 模型档切换(`MODEL_TIER=dev\|prod`,D19) | 同上,读环境变量,业务代码不感知具体模型名 |
+| **provider 选择**(`LLM_PROVIDER_DEV`/`LLM_PROVIDER_PROD`,D29):dev/prod 两档可以指向不同服务商,不只是同一服务商换模型 | 同上 |
+| Provider 协议(`call`/`classify_error`/`aclose`) | `backend/llm/providers/base.py` |
+| OpenAI + 本地 Ollama + OpenRouter(三者共用同一实现;Ollama 自带 OpenAI 兼容层,OpenRouter 本身就是一层 OpenAI 兼容代理) | `backend/llm/providers/openai_compatible.py` |
+| Anthropic 原生 Messages API(格式不兼容,单独翻译 system/max_tokens/content blocks) | `backend/llm/providers/anthropic_provider.py` |
+| provider 名字 → 实例,env 变量读取集中处 | `backend/llm/providers/registry.py` |
+| 模型能力档案——目前只有上下文窗口大小(D13"能力档案不锁定具体模型",§4.4 分层压缩的预算缩放消费这个值,`LLM_CONTEXT_WINDOW_OVERRIDE` 环境变量覆盖) | `backend/llm/model_capabilities.py` |
+
+配置这几个 provider 需要的账号/软件(OpenAI/Anthropic/OpenRouter 是云端账号+API key;Ollama 是本机常驻服务,不是 Python 包)见 `.env.example` 里每个 provider 段落的注释,这里不重复。
 
 ### 状态
 
-⏳ 未实现,roadmap 阶段 4.2 第 1 项明确标注"后补代价极大,必须第一个建"——建议在骨架期第一个动手的就是这一层,而不是先搭路由或 SubAgent。
+✅ **已实现并跑通真实调用**(2026-08-26):`adapter.py`(18 条单测,覆盖超时/重试/熔断/双档/provider 选择)+ 三个 provider 文件(9 条单测,覆盖格式转换/错误分类)。真实端到端验证过:本地 Ollama(`qwen3:0.6b`)通过 `provider=ollama` 打通完整调用链路(免费、无需网络)。✅ **OpenRouter 支持**(2026-08-28,D29 的横向扩展):`provider=openrouter` 复用 `OpenAICompatibleProvider`(和 ollama 同一套复用逻辑),`backend/llm/providers/registry.py` 新增分支 + `tests/unit/llm/test_registry.py` 覆盖 provider 名字→实例装配;⏳ 未做真实网络调用验证(没配 `OPENROUTER_API_KEY`),单测走的是检查 base_url/api_key 装配是否正确,不代表 OpenRouter 服务端一定接受这套请求格式。⏳ 未验证:OpenAI/Anthropic 的真实网络调用(环境里没配对应 API key,单测走的是注入假 Provider,不代表 SDK 参数在真实服务端一定被接受)。⏳ 未接入:`naive_rag.py`/`run_baselines.py` 里此前内联的 LLM 调用还没有迁移过来用这一层,是遗留技术债。
 
 ---
 
-## 8. 代码目录结构与测试结构(尚不存在,供开工时参考)
+## 8. 代码目录结构与测试结构
 
 ### 8.1 目录树
 
@@ -513,11 +633,16 @@ backend/
       write_memory.py
       query_recipes.py
   agents/
-    router.py                        § 5.1
+    routing.py                       § 5.1 七分支分类(`classify_route` / `classify_turn`)
+    agent_loop.py                    § 3.2 Agent Loop
+    dispatch.py                      § 5.2 单/双派发 + SSE
+    timeouts.py                      ENGINEERING §1.1 45s/90s
     tcm_subagent.py                  § 5.2 步骤 3
     nutrition_subagent.py            § 5.2 步骤 3
     reconciliation.py                § 5.2 步骤 5
     verification.py                  § 5.2 步骤 6
+    clarification.py                 D33 人在环追问
+    log_write.py / log_review.py     § 5.3 记录 / 记录回顾
   memory/
     critical_fact_scanner.py         § 4.3
     compression.py                   § 4.4/4.4.1(优先级表 + 两级触发)
@@ -535,6 +660,10 @@ backend/
     input_filters.py
     output_filters.py
     ed_protection.py
+  observability/
+    tracing.py                       ENGINEERING §6 Langfuse 门面(没密钥 no-op)
+    redact.py                        上报前脱敏(PRD 健康数据)
+    cost.py                          本地 USD 估算,供 M12 / 结构化日志
   onboarding/
     ccmq_scoring.py                  § 11.3,CCMQ 简版计分逻辑(含多体质夹杂判定)
     flow.py                          § 11.2,渐进式引导对话步骤
@@ -543,7 +672,7 @@ db/
   migrations/                        Alembic,ENGINEERING §4.1
   load_recipes.py                    已有
   embed_bge_m3.py                    已有
-  load_conflict_rules.py             ⏳待写,幂等 ingest,呼应 §1.2
+  load_conflict_rules.py             ✅ 幂等 ingest，JSONL → conflict_rules 表
 api/
   main.py                            FastAPI,§10,ENGINEERING §9(容器化/部署)
   schemas.py                         § 10.1 Pydantic 请求/响应模型
@@ -594,16 +723,17 @@ ENGINEERING §7.1 定了金字塔形状(单元/集成/eval)和一条硬要求("�
 | `skills/registry.py`(§6.2) | `unit/skills/test_registry.py` | 单元 | 文件读取缓存(不重复读盘)、version 号解析、触发步骤映射正确 |
 | `mcp_server/server.py`(§2.3 权限分层) | `unit/mcp_server/test_tool_whitelist.py` | 单元 | 越权调用在协议层被拒绝(D7 修订的核心论点——不是"应用层判断",要在这一层验证) |
 | SubAgent 循环编排(`agents/tcm_subagent.py` 等) | `integration/test_subagent_loop.py` | 集成(mock LLM) | 资源限额(≤15 次工具调用)触发终止、状态提示确实被追加、连续 3 轮无新增信息的循环防护 |
-| 六分支路由(`agents/router.py`) | `integration/test_routing.py` | 集成(mock LLM 或规则) | D25 六条分支各自命中对应示例问法;"记录回顾 vs 事实查询""候选评估 vs 完整推荐"这两组易混淆分支的边界用例 |
-| 调和层/核查 pass(`agents/reconciliation.py`/`verification.py`) | `integration/test_reconciliation.py`/`test_verification.py` | 集成(mock LLM) | Skill 内容确实被拼入对应调用的 prompt(而不是常驻);候选评估分支走的是 D25 新增规则而非其余六条;核查 pass 的"只拒绝不改写" |
+| 六分支路由(`agents/routing.py`) | `integration/test_routing.py` | 集成(mock LLM 或规则) | D25 六条分支各自命中对应示例问法;"记录回顾 vs 事实查询""候选评估 vs 完整推荐"这两组易混淆分支的边界用例 |
+| 调和层/核查 pass(`agents/reconciliation.py`/`verification.py`) | `integration/test_reconciliation.py`/`test_verification.py` | 集成(mock LLM) | Skill 内容确实被拼入对应调用的 prompt(而不是常驻);候选评估分支走的是 D25 新增规则而非其余六条;证据修复不调用工具并保留可用输出 |
 | `api/main.py` 的 `/api/chat`(§10) | `integration/test_api_chat_sse.py` | 集成 | SSE 事件顺序(核查必须在第一条 `token` 事件前完成,§10.3 的硬约束);`trace_id` 贯穿 |
+| `observability/*`(ENGINEERING §6) | `unit/observability/test_tracing.py` | 单元 | 没密钥 no-op;内存 backend 能还原 span 树(路由/generation/工具);饮食记录与检索原文默认不上报;cost 估算对 ollama=$0 |
 | PRD §11 fallback 表 | `integration/test_fallbacks.py` | 集成 | ENGINEERING §7.1 原文"没测过的降级路径 = 不存在的降级路径"——表里每一行一条对应用例,包含本次新增的"Tier 1 回落失败时从 Tier 3 丢弃"这条(D27 修订二) |
 
 **与 `evals/` 的边界,避免混淆**:`tests/` 测的是"代码逻辑对不对"(确定性可断言,CI 门禁,ENGINEERING §8),`evals/` 测的是"输出质量好不好"(M1-M14,允许波动,不是 pass/fail 的单测)。两者都要写,但不是同一件事——`tests/integration/` 里出现的"调和层被正确调用"和 `evals/` 里出现的"调和层给出的调和建议质量如何"是两个不同层面的问题,写代码时容易把后者也塞进单测,应该避免。
 
 ### 8.3 状态
 
-⏳ **骨架已建,逻辑全部未实现。** `backend/`、`api/`、`tests/`、`db/migrations/`、`frontend/` 目录与本节列出的文件已按此结构建出(2026-08-26),但每个源文件只有指向本文档对应章节的 docstring 占位,每个测试文件用 `pytest.mark.skip` 标注待实现——`pytest --collect-only tests/` 能跑通、17 条占位用例全部可收集,但没有一行真实逻辑。具体的"先写哪个、写完怎么验证"执行顺序见 `docs/BUILD_PLAN.md`,不在本节重复。
+✅ **目录与实现均已存在**，不再是 docstring 占位。`backend/agents/router.py` 已拆成 `routing.py` + `agent_loop.py`（外加 `dispatch.py`）。⏳ `tests/integration/test_fallbacks.py` 仍整文件 `pytest.mark.skip`。执行顺序与剩余项见 `docs/BUILD_PLAN.md`。
 
 ## 9. 完成状态总表(诚实版)
 
@@ -611,45 +741,29 @@ ENGINEERING §7.1 定了金字塔形状(单元/集成/eval)和一条硬要求("�
 
 | 组件 | 文件 | 验证方式 |
 |---|---|---|
-| RAG 格式转换 + 切块管线 | `planning/step1-naive-rag/ingest.py` | 对全部真实知识源(JSON/JSONL/XML/MD/PDF,含 OCR 文本)跑通,产出 `knowledge/_processed/{tcm,nutrition}_chunks.jsonl` |
-| BM25 baseline + recall 评测 | `planning/step1-naive-rag/{naive_rag.py,eval_recall.py,build_and_eval_bm25.py}` | 产出了 D23/D24 决策依据的真实 recall@5 数字 |
-| `knowledge_chunks` 表结构 | `db/schema.sql` | SQL 已 review,**未在真实 Postgres 实例上执行过**(项目目前没有已部署的 Postgres) |
-| `recipes` 表结构 | `db/schema.sql` | 同上 |
-| recipes 灌库脚本 | `db/load_recipes.py` | 对 2000 条真实数据 dry-run 过解析逻辑,未连真实 DB |
-| BGE-M3 → pgvector 脚本 | `db/embed_bge_m3.py` | 已写完 `load`/`search` 两个子命令,**未执行过**——需要用户在有网络、装好 `FlagEmbedding`/`torch` 的机器上,配合一个真实 Postgres 实例才能跑 |
-| 冲突规则表内容 | `evals/conflict_rules.jsonl` | 40 条(18 verified / 22 needs_source),未进数据库 |
+| RAG 切块 + BM25 baseline | `planning/step1-naive-rag/` | B0 全量 recall@5=53.3%，见 `EVALUATION.md` |
+| `knowledge_chunks` / `recipes` + 其余用户表 | `db/schema.sql` | 真实 Postgres 跑过；chunks 5837 条已灌 |
+| `conflict_rules` ingest | `db/load_conflict_rules.py` | 40 条幂等同步进表 |
+| LLM adapter + providers + replay | `backend/llm/` | 单测 + 离线 replay |
+| MCP server + 6 工具 | `backend/mcp_server/` | 白名单单测；含 `query_weather` |
+| Agent Loop / 七分支路由 / 双 SubAgent / 调和 / 核查 | `backend/agents/{agent_loop,routing,dispatch,*}` | 单元 + 集成(mock LLM) |
+| `/api/chat` SSE + profile + onboarding + sessions | `api/main.py` | 集成测试 |
+| 输入/输出/ED/过敏原硬阻断 | `backend/guardrails/` | 单测 100% 路径 |
+| 首次引导 + CCMQ | `backend/onboarding/` | 单测 + 集成 |
+| 菜品拆解 + daily_log 写入 | `dish_decomposition.py` / `write_memory.py` | 单测 + SSE 集成 |
+| 会话落库 + Tier 归档 | `session_store.py` / `compression.py` | 集成(真实 PG) + 纯函数单测 |
+| 关键事实扫描 | `critical_fact_scanner.py` + `pending_critical_facts.py` | 扫描进 pending；确认后才 UPSERT（D34） |
+| 前端最小聊天 | `frontend/src/app/page.tsx` | 历史可拉；SSE 含 clarification/task/pending 确认条 |
+| Langfuse / CI / docker compose | `observability/` · `ci.yml` · `compose` | 见 ENGINEERING §6/§8/§9 |
 
-### 9.2 有完整设计,零代码
+### 9.2 有设计、代码未完成或未接线(阶段 7 = Partial，不是 Done)
 
-| 组件 | 设计位置 |
+| 组件 | 现状 |
 |---|---|
-| MCP server(全部 6 个工具) | 本文档 §2 |
-| Agent Loop / 中枢 agent 路由编排 | 本文档 §3、§5.1 |
-| TCM SubAgent / Nutrition SubAgent | 本文档 §5.2 步骤 3 |
-| 调和层 | 本文档 §5.2 步骤 5,`DECISIONS.md` D14 |
-| 核查 pass | 本文档 §5.2 步骤 6,`DECISIONS.md` D15 |
-| `write_memory` / 关键事实落库前置扫描 | 本文档 §4.2、§4.3 |
-| 分层压缩组件 | 本文档 §4.4,`DECISIONS.md` D8 |
-| `user_profile`(含 `preferences` 字段,D25)/ `diet_log` / `conversation_sessions` / `dish_ingredient_map` 表 schema | 本文档 §1.2 |
-| `conflict_rules` 从 JSONL 迁移进关系表 | 本文档 §1.2 |
-| "记录回顾""候选评估"两条新分支的具体实现(D25) | 本文档 §5.1、§5.3 |
-| 3 份 Agent Skills 文件(其中 reconciliation_rubric/verification_checklist 各多一条 D25 新增内容待写)+ `skills/registry.py`(D27 加载机制) | 本文档 §6 |
-| 分层压缩的压缩优先级表 + 结构化归档摘要模板(D27) | 本文档 §4.4,`DECISIONS.md` D27 |
-| SubAgent 循环状态提示(D27) | 本文档 §4.5,`DECISIONS.md` D27 |
-| `user_profile` 体质字段扩展(`constitution_secondary`/`constitution_source`/`constitution_confirmed_at`,D28) | 本文档 §1.2、§11.3,`DECISIONS.md` D28 |
-| 首次使用引导对话流程 + CCMQ 计分逻辑(含体质夹杂判定,D28) | 本文档 §11 |
-| FastAPI 路由/schema/SSE 事件设计(D26) | 本文档 §10,`DECISIONS.md` D26 |
-| `user_dish_aliases` 表 + 三级查找/晋升逻辑(程序性记忆,D27 修订一) | 本文档 §1.2、§4.2,`DECISIONS.md` D27 修订一 |
-| 压缩触发时机(SubAgent 内同步 + 中枢异步/同步兜底两级,D27 修订二) | 本文档 §4.4.1,`DECISIONS.md` D27 修订二 |
-| 2 份新增 Skill 文件(CCMQ 问卷、ED 响应话术,D22 补充) | 本文档 §6.1 |
-| 目录结构(§8.1)与逐文件测试覆盖表(§8.2) | 本文档 §8 |
-| LLM adapter 层(超时/重试/熔断/双档切换) | 本文档 §7,`ENGINEERING.md` §1 |
-| Guardrails(输入防护/输出拦截/ED 防护/循环防护) | `PRD.md` §10 |
-| `evals/dataset.jsonl`(E1/E2a/E2b/E3,≥40 条)+ `smoke.jsonl` | `PRD.md` §8.1,`planning/roadmap.md` 阶段 3——**目前 `evals/` 下只有 `conflict_rules.jsonl` 和 `reference_tables/`,组装好的测试集本身还不存在** |
-| `EVALUATION.md` / `THREAT_MODEL.md` | `PRD.md` §15 交付物清单,两份文件均未创建 |
-| Langfuse 可观测接入 | `ENGINEERING.md` §6 |
-| 前端(Next.js) | `PRD.md` §7 |
-| `docker compose up` 一键部署 | `ENGINEERING.md` §9 |
+| 独立 3 日菜谱组装 | Skill 已在菜谱问法加载；没有单独步骤 7 管线 |
+| 两侧 SubAgent 都失败 → naive RAG | 当前是 guardrail，没有 RAG 降级管线 |
+| 空检索静态兜底表 | 无；核查拒绝 |
+| MQE / HyDE / B2 ablation | 明确排后，阶段 8 |
 
 ### 9.3 与 `planning/roadmap.md` 的对应关系
 
@@ -695,17 +809,34 @@ D26 把 FastAPI 定为唯一后端 Web 框架,本节给出具体路由与 schema
 ### 10.3 SSE 事件设计(服务 M10 首字节延迟)
 
 ```
-event: token       data: {"text": "..."}              # 生成内容的增量片段
-event: source      data: {"source_id": "...", ...}     # 溯源信息,前端渲染可展开引用(§5.2 步骤8)
-event: guardrail   data: {"type": "...", "detail": "..."}  # 命中的拦截/降级(§5.4)
-event: done        data: {"trace_id": "..."}           # 结束,携带 trace_id 供前端后续查询
+event: token         data: {"text": "..."}              # 生成内容的增量片段
+event: source        data: {"source_id": "...", ...}     # 溯源信息,前端渲染可展开引用(§5.2 步骤8)
+event: guardrail     data: {"type": "...", "detail": "..."}  # 命中的拦截/降级(§5.4)
+event: clarification data: {"question": "..."}           # 信息不足,追问用户(D33,§5.1.3);问题文本随后也按 token 事件吐一遍,不认识这个新事件类型的旧前端仍能正常显示文字
+event: done          data: {"trace_id": "..."}           # 结束,携带 trace_id 供前端后续查询
 ```
 
-首字节延迟(M10)对应第一条 `token` 事件的发出时刻;核查 pass(D15,只拒绝不改写)必须在第一条 `token` 事件发出**之前**完成——先核查后流式输出,不能边流式吐边核查,否则"只拒绝不改写"这条规则在流式场景下无法实施(已经吐出去的 token 撤不回来)。这是 SSE 设计对既有 D15 决策的一个具体约束,写在这里防止实现时顺手做成"边生成边核查"。
+首字节延迟(M10)对应第一条 `token` 事件的发出时刻;核查 pass(D15)及其可能的一次
+证据修复必须在第一条 `token` 事件发出**之前**完成——先核查/修复后流式输出,
+不能边流式吐边核查，否则已经吐出去的 token 撤不回来。
+
+**多任务扩展(D32,§5.1.1,只在一句话命中多个意图时出现)**:
+
+```
+event: task        data: {"index": 0, "total": 2, "branch": "...", "text": "..."}
+                    # 子任务开始前声明——第几个/共几个/走哪条分支/切分出的原文
+（该子任务自己完整的 token/source/guardrail 事件序列，与单任务路径完全一样）
+event: task_done   data: {"index": 0}
+                    # 子任务自己的 done 在这里被换成 task_done，不是真的结束
+...(下一个子任务重复 task → 事件序列 → task_done)...
+event: done         data: {"trace_id": "..."}          # 整个轮次真正结束，只有这一条
+```
 
 ### 10.4 状态
 
-⏳ **完全未实现。** 路由清单、Pydantic schema、SSE 事件设计均为规划,`api/main.py` 尚不存在。
+✅ **§10.1 四组路由均已实现**：`POST /api/chat`、`GET /api/sessions/{session_id}/messages`、`GET/PATCH /api/profile`、`POST /api/onboarding/{start,answer}`。会话落库走 `session_store.record_turn()` / `load_session_messages()`。
+
+⏳ **`/api/chat` 仍有已知未完成项**：真正的模型级流式(adapter 一次拿完整响应再切块)。D20 依据不足重试、`query_weather`、关键事实确认/撤销、前端 SSE（含 `clarification` / `task` / `critical_fact_pending`）已接线。
 
 ---
 
@@ -720,9 +851,17 @@ D28 决定了"渐进式引导 + 体质主/次/来源字段",本节给出具体�
 ### 11.2 对话步骤
 
 ```
-0. 开场白:说明会先了解基本情况(过敏原/体质/口味),几个问题,随时可跳过,跳过不影响基础功能
+0. 开场白:说明会先了解基本情况(过敏原/体质/口味/所在城市),几个问题,随时可跳过,跳过不影响基础功能
 1. 收集过敏原/禁忌(开放式提问,命中关键词即结构化——复用 §4.2 步骤 1/2 的确定性抽取逻辑)
 2. 收集口味与情境偏好(开放式,写入 preferences,D25)
+2.5. 收集所在城市(D30):
+     反问"你现在在哪个城市/地区"→ 写入 city;
+     由城市*建议*一个时区候选并显式确认("看起来你在 XX 时区,对吗"),不静默写入——
+     D30 明确不做"从城市自动反查时区"这种地理编码,建议值只是给用户确认时省一步输入,
+     用户确认后才写入 timezone,用户改了就用改后的值,跳过则 timezone 留空(退到
+     DIET_EXPERT_TZ 环境变量兜底,见 query_diet_log.py)。
+     这一步不阻塞,但跳过会导致 query_weather(城市)和相对日期解析(时区)两处都要靠
+     兜底值,准确性下降,值得在开场白里提一句为什么问这个
 3. 体质:
    3a. 反问"你知道自己的中医体质类型吗?"
        ├─ 已知 → 询问具体是哪一类(九分类之一)
@@ -735,19 +874,36 @@ D28 决定了"渐进式引导 + 体质主/次/来源字段",本节给出具体�
    3d. 人在环确认:确认 / 修改 / "不太准,先跳过"
        → 写入 constitution(主)+ constitution_secondary(次,可空)
          + constitution_source="ccmq_computed" + constitution_confirmed_at
-4. 完成,进入正常问答。任何一步被跳过都不阻塞后续使用,体质/过敏原可以在之后任意一次会话里
-   通过"我想重新测一下体质"这类主动请求再次触发步骤 3
+4. 完成,进入正常问答。任何一步被跳过都不阻塞后续使用,体质/过敏原/城市都可以在之后任意
+   一次会话里通过主动请求("我想重新测一下体质""我搬到北京了")再次触发对应步骤
 ```
 
 ### 11.3 CCMQ 计分与"体质夹杂"
 
-CCMQ 简版每题 5 级李克特量表,按九类体质(平和/气虚/阳虚/阴虚/痰湿/湿热/血瘀/气郁/特禀)分别计算转化分(0-100)。判定规则:转化分 ≥ 40 记为"是"(可作为 `constitution` 主体质候选),30-40 记为"倾向是"(进入 `constitution_secondary`)。**允许同时命中多个体质**——中医"体质夹杂"是常见且有临床意义的结果,不是计分异常,只取最高分会让 TCM SubAgent 拿到的信息比问卷实际结果更贫乏(这一点在 D28 里已有完整论证)。
+CCMQ 简版每题 5 级李克特量表。对话主答法是打 1-5(1完全不像/2不太像/3有些像/4比较符合/5非常符合)，与官方频率词(没有/很少/有时/经常/总是)一一对应，文字答法仍可解析。按九类体质(平和/气虚/阳虚/阴虚/痰湿/湿热/血瘀/气郁/特禀)分别计算转化分(0-100),公式为官方《中医体质分类与判定》标准(中华中医药学会标准)公开发表的转化分公式:`转化分 = [(原始分 - 条目数) / (条目数 × 4)] × 100`。
+
+**判定规则按体质类型分两套,不是九类统一一套(2026-08-26 对齐官方标准,修订本节此前"九类统一 ≥40/30-40"的简化表述)**:
+
+- **气虚/阳虚/阴虚/痰湿/湿热/血瘀/气郁/特禀(8 种偏颇体质)**:转化分 ≥ 40 记为"是"(可作为 `constitution` 主体质候选),30-40 记为"倾向是"(进入 `constitution_secondary`)，< 30 记为"否"。
+- **平和质(单独一套规则)**:转化分 ≥ 60 **且其他 8 种体质转化分均 < 30** 记为"是";转化分 ≥ 60 **且其他 8 种体质转化分均 < 40**(但不满足上一条)记为"基本是";否则记为"否"。"是"/"基本是"均可作为 `constitution` 主体质候选,判定弱于"是"但仍属于总体健康、无明显偏颇的信号,不等同于 8 种偏颇体质的"倾向是"。
+
+**允许同时命中多个偏颇体质**——中医"体质夹杂"是常见且有临床意义的结果,不是计分异常,只取最高分会让 TCM SubAgent 拿到的信息比问卷实际结果更贫乏(这一点在 D28 里已有完整论证)。多个体质都达到"是"/"基本是"候选门槛时,`constitution`(主)取转化分最高的一个,其余候选连同"倾向是"的都进 `constitution_secondary`。
+
+**题库内容来源说明**:`backend/skills/ccmq_questionnaire.md` 里的题目文字是本项目改写的简化版(每类体质 5 条,共 45 条),不是官方 60 条量表的逐字复刻——官方量表是中华中医药学会发布的标准化文件,本项目没有可靠的逐字原文来源,且本节"简版、每轮 2-3 题分批收集"的定位本身也不需要满 60 题;转化分公式和判定阈值忠实对照公开发表的官方标准，不是本项目发明的。
 
 **体质未知/未确认时的降级行为**(呼应 §5.2 步骤 3 新增的说明):`constitution` 为空,不代表 TCM SubAgent 不可用——它的建议范围收窄为体质无关的普适性温和建议,并引导用户完善信息,不报错、不套用默认体质(套用错误体质的风险高于"不知道")。
 
 ### 11.4 状态
 
-⏳ **完全未实现。** 对话步骤、CCMQ 计分逻辑、`constitution_secondary` 相关的 schema 变更(§1.2)均为规划,`db/schema.sql` 尚未包含 D28 新增字段,CCMQ 简版量表的具体题目/计分系数表尚未整理成可执行的查表结构(现状与 D5 相同——量表来源已确定,但结构化数据文件本身还没做)。
+✅ **CCMQ 计分逻辑已完成**(2026-08-26,`backend/onboarding/ccmq_scoring.py`,`tests/unit/onboarding/test_ccmq_scoring.py` 17 条全过):转化分公式、8 种偏颇体质 ≥40/30-40/<30 三档判定、平和质单独一套判定规则(含"基本是"档位)、多体质同时候选("体质夹杂")时按转化分取最高分为主体质、边界值(原始分 11/13/17 对应转化分恰好 30/40/60)均已实现并测试覆盖。题库(`backend/skills/ccmq_questionnaire.md`,每类 5 条共 45 条,改写简化版)已随 Skill registry 登记加载。`constitution_secondary` 等 D28 schema 字段此前已在 `db/schema.sql` 落地(阶段4任务3)。
+
+✅ **§11.2 对话式引导步骤 + `POST /api/onboarding/*` + `GET/PATCH /api/profile` 均已实现**(2026-08-26,`backend/onboarding/flow.py`、`api/main.py`，29 条单测 + 8 条集成测试全过，另有对真实本地 Postgres 的端到端验证：走完整条"过敏原→偏好→城市→时区确认→体质自述/CCMQ 问卷→确认"流程，真实写入 `user_profile` 并读回核对字段一致)。**两处文档本身没回答、这次做出并已写进 `flow.py`/`api/schemas.py` 模块文档的具体选择**：①多轮 `/api/onboarding/answer` 请求之间的状态是一个不透明 `state` dict，由客户端原样带回，服务端不新建表维护会话态；②步骤1/2(过敏原/偏好)的自由文本抽取用比 §4.2 简单得多的规则(分隔符切词+否定词识别)，不等 `dish_decomposition.py`(仍是 `NotImplementedError`)——这两类任务复杂度不同，硬等前者做完没必要。CCMQ 问卷环节走确定性代码，不调用 LLM(45 题都是固定选择题)。
+
+✅ **`write_memory(daily_log)` + 菜品拆解已落地**；`GET /api/sessions/{id}/messages` 已落地。
+
+✅ **引导/追问状态**：有 DSN 时默认进 Postgres（`onboarding_sessions` / `pending_clarifications`），测试仍用 InMemory。`/api/onboarding/answer` 的客户端 `state` dict 路径仍在。引导与 `/api/chat` 已能在画像不完整时走 chat 内 token 提问；没有单独的问卷页。`dish_decomposition.py` 已不是 `NotImplementedError`。
+
+> `/api/onboarding/answer` 仍可带回 `state` dict；`/api/chat` 内的引导进度有 DSN 时落在 `onboarding_sessions` 表，无 DSN 才退回内存。
 
 ---
 
@@ -755,6 +911,8 @@ CCMQ 简版每题 5 级李克特量表,按九类体质(平和/气虚/阳虚/阴�
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-08-29 | v0.7 | 审计收口：天气/HITL/Level1 FIFO/D20#2/菜谱 Skill 最小接线/补剂偏好/前端 SSE/PG 追问引导/`conflict_gaps`；§9.2 只留 naive RAG、3 日菜谱管线、阶段 8 |
+| 2026-08-29 | v0.6 | 回填完成状态：§0/§1/§2.5/§3.4/§5.5/§6.3/§8/§9/§10.4/§11.4 与代码对齐；`router.py` 拆分为 `routing.py`+`agent_loop.py`；阶段 7 标 Partial |
 | 2026-08-26 | v0.5 | §2.1 明确点名现有检索层已经是 agentic RAG 形态(D20 行为点#1);新增 §2.6:MQE/HyDE 检索增强设计,明确定位为工具内部增强、非新增 agent 决策点,且明确排后(需先有 recall 数字支撑,阶段8前后再评估);新增 `docs/BUILD_PLAN.md`(roadmap 阶段顺序 × §8.1/8.2 文件与测试映射的执行清单);按 §8.1 建出 `backend/`/`api/`/`tests/`/`db/migrations/`/`frontend/` 骨架目录与占位文件 |
 | 2026-08-26 | v0.1 | 首个版本。整合 `PRD.md` §7/§10/§12、`DECISIONS.md` D1-D24、`ENGINEERING.md`、`RAG_PIPELINE_DESIGN.md` 与已写出的 `ingest.py`/`db/*.py` 实际状态;新增两处此前未落定的设计(§4.3 关键事实跨分支扫描、`dish_ingredient_map` 查表优先的菜品拆解),标注为本文档新增而非既有决策 |
 | 2026-08-26 | v0.3 | 新增 D26(FastAPI,§10 API 层设计)、D27(记忆架构升级:§4.1.1 认知类型/存储格式反向验证、§4.4 压缩优先级表与结构化归档摘要、§4.5 SubAgent 循环状态提示)、D28(§11 首次使用引导与体质获取对话流程,§1.2 体质字段扩展);§6 补充 Skills 三层加载机制的具体设计(此前只有文件清单,没有加载机制) |

@@ -1,0 +1,66 @@
+# docs/ENGINEERING.md §8 CI pipeline:
+#   lint (ruff) → 单元测试 → 集成测试(replay,离线) → smoke eval(15 条)
+# docs/BUILD_PLAN.md 阶段6"CI pipeline"这一行的实现。
+#
+# 1. 单元/集成测试走 DI / ReplayProvider，不需要 secrets。
+# 2. smoke-eval 用 evals/fixtures/bm25_smoke_chunks.jsonl，每次都跑。
+#    地板 60% 是 fixture 回归，不是真实语料 Launch 70%（全量 B0=53.3%）。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一个分支/PR 有新提交时取消排队中的旧一轮，不浪费 runner 时间。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check .
+
+  test:
+    name: unit + integration (replay, offline)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: pytest
+        env:
+          # 显式声明，即便这就是默认值——离线回放，不打真实网络，不需要任何
+          # LLM API key(backend/llm/providers/replay.py 的设计意图)。
+          LLM_REPLAY_MODE: replay
+        run: python3 -m pytest tests/ -q
+
+  smoke-eval:
+    name: smoke eval (fixture floor)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: run smoke eval (vendored BM25 fixture; not Launch 70%)
+        run: >
+          python3 evals/run_baselines.py --root . --smoke --b0-only
+          --chunks evals/fixtures/bm25_smoke_chunks.jsonl
+          --check-ci-floor 0.6

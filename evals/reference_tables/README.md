@@ -93,6 +93,16 @@ E1-41 至 E1-45 五条的逻辑与其他八种体质**根本不同**:
 
 ---
 
+## `e1_retrieval_gold.jsonl` —— M1 检索金标（chunk id）
+
+E1 的 **检索** ground truth。不改冻结的 `dataset.jsonl`。
+
+每条有一组或多组 `groups`。组内 `any_of` 是等价 chunk（命中任一即可）。体质×季节题固定两组：**体质专章 + 节气表**（春 `tcm_000029` / 夏 `tcm_000030` / 长夏 `tcm_000031` / 秋 `tcm_000032` / 冬 `tcm_000033`）。不要把 `constitution_season.jsonl` 里的 derived 合成句当成必须召回的原文。
+
+`retrieval_gt` 给可选的 LLM 检索裁判用，只写库里有的方向。E1-14 的「餐前后 1 小时」在 `conflict_rules.jsonl` S08，属于回答/规则评测，不在这个文件里。
+
+---
+
 ## 待建的其他参考表
 
 | 表 | 用途 | 状态 |

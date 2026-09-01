@@ -3,6 +3,14 @@ docs/archive/
 knowledge/
 planning/
 _archive/
+docs/
+
+# --- 运行产物 / 过程文件（评估脚本的输出，不上传）---
+evals/results/
+*.partial.json
+
+# --- 本地工具配置（因人而异，不上传）---
+.claude/settings.local.json
 
 # --- Python ---
 __pycache__/
@@ -31,6 +39,7 @@ env/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+
 
 # --- 构建产物 ---
 dist/

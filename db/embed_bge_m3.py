@@ -55,8 +55,18 @@ try:
 except ImportError:
     register_vector = None
 
+try:
+    from pgvector import SparseVector
+except ImportError:
+    SparseVector = None
+
 MODEL_ID = "BAAI/bge-m3"
 EMBED_DIM = 1024
+# BGE-M3 的 sparse(词法)输出是"token_id -> 权重"的字典，维度=底层 XLM-R
+# tokenizer 的 vocab_size——实测值(2026-08-30，本机 transformers 加载
+# AutoTokenizer.from_pretrained("BAAI/bge-m3").vocab_size == 250002)，
+# 不是猜的常数；换 embedding 模型这个数字也要跟着换。
+EMBED_DIM_SPARSE = 250_002
 DEFAULT_BATCH = 16  # M3 较大，本地 CPU/小显存先保守一点
 
 
@@ -64,8 +74,8 @@ def require_pg():
     if psycopg2 is None:
         print("需要 psycopg2：pip install psycopg2-binary", file=sys.stderr)
         sys.exit(1)
-    if register_vector is None:
-        print("需要 pgvector：pip install pgvector", file=sys.stderr)
+    if register_vector is None or SparseVector is None:
+        print("需要 pgvector(>=0.7,支持 sparsevec)：pip install -U pgvector", file=sys.stderr)
         sys.exit(1)
 
 
@@ -139,7 +149,32 @@ class BgeM3Embedder:
             return_sparse=False,
             return_colbert_vecs=False,
         )["dense_vecs"]
-        arr = np.asarray(out, dtype=np.float32)
+        return self._normalize(np.asarray(out, dtype=np.float32))
+
+    def encode_hybrid(
+        self, texts: list[str], batch_size: int = DEFAULT_BATCH
+    ) -> tuple[np.ndarray, list[dict[int, float]]]:
+        """Dense + sparse(词法) in one forward pass——同一次 `model.encode()`
+        顺带产出两路输出，不是跑两次模型。sparse 部分是 BGE-M3 自己的稀疏
+        词法权重(不是 BM25，但解决同一类"专有名词精确命中"问题，见 D2.6节
+        混合检索的设计动机)，key 是 token id(int)，value 是权重。"""
+        out = self.model.encode(
+            texts,
+            batch_size=batch_size,
+            max_length=8192,
+            return_dense=True,
+            return_sparse=True,
+            return_colbert_vecs=False,
+        )
+        dense = self._normalize(np.asarray(out["dense_vecs"], dtype=np.float32))
+        sparse = [
+            {int(token_id): float(weight) for token_id, weight in d.items()}
+            for d in out["lexical_weights"]
+        ]
+        return dense, sparse
+
+    @staticmethod
+    def _normalize(arr: np.ndarray) -> np.ndarray:
         if arr.ndim != 2 or arr.shape[1] != EMBED_DIM:
             raise RuntimeError(
                 f"unexpected embedding shape {arr.shape}, expected (*, {EMBED_DIM})"
@@ -150,10 +185,12 @@ class BgeM3Embedder:
 
 
 def upsert_batch(cur, rows: list[tuple]):
-    """rows: (chunk_id, domain, source_file, source_type, text, metadata_json, embedding, embed_model)"""
+    """rows: (chunk_id, domain, source_file, source_type, text, metadata_json,
+    embedding, sparse_embedding, embed_model)"""
     sql = """
         INSERT INTO knowledge_chunks
-            (chunk_id, domain, source_file, source_type, text, metadata, embedding, embed_model)
+            (chunk_id, domain, source_file, source_type, text, metadata,
+             embedding, sparse_embedding, embed_model)
         VALUES %s
         ON CONFLICT (chunk_id) DO UPDATE SET
             domain = EXCLUDED.domain,
@@ -162,6 +199,7 @@ def upsert_batch(cur, rows: list[tuple]):
             text = EXCLUDED.text,
             metadata = EXCLUDED.metadata,
             embedding = EXCLUDED.embedding,
+            sparse_embedding = EXCLUDED.sparse_embedding,
             embed_model = EXCLUDED.embed_model
     """
     psycopg2.extras.execute_values(cur, sql, rows, page_size=len(rows))
@@ -192,9 +230,9 @@ def cmd_load(args):
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
             texts = [c["text"] for c in batch]
-            vecs = embedder.encode(texts, batch_size=batch_size)
+            dense_vecs, sparse_vecs = embedder.encode_hybrid(texts, batch_size=batch_size)
             rows = []
-            for c, v in zip(batch, vecs):
+            for c, dense_v, sparse_v in zip(batch, dense_vecs, sparse_vecs):
                 meta = c.get("metadata") or {}
                 rows.append(
                     (
@@ -204,7 +242,8 @@ def cmd_load(args):
                         c.get("source_type"),
                         c["text"],
                         psycopg2.extras.Json(meta),
-                        v.tolist(),
+                        dense_v.tolist(),
+                        SparseVector(sparse_v, EMBED_DIM_SPARSE) if sparse_v else None,
                         MODEL_ID,
                     )
                 )

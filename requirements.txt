@@ -10,16 +10,44 @@ beautifulsoup4      # NIH XML 补剂说明按 h2/h3 解析
 lxml                # BeautifulSoup 用 "lxml" 作为解析器
 transformers        # AutoTokenizer.from_pretrained("BAAI/bge-m3")，token 感知二次切分用
 
+# ---- 配置（backend/env.py — 从 .env 读 DIET_EXPERT_PG_DSN 等）----
+python-dotenv
+
 # ---- Embedding + 入库（db/embed_bge_m3.py, db/load_recipes.py）----
 FlagEmbedding       # BGE-M3 dense embedding 模型
 torch               # FlagEmbedding 的底层依赖
 psycopg2-binary     # 连 Postgres
-pgvector            # Postgres 里的 vector 类型 <-> numpy 互转
+pgvector>=0.7.0     # Postgres 里的 vector 类型 <-> numpy 互转；>=0.7.0 才有
+                    # sparsevec 类型(混合检索用，2026-08-30)，同时要求
+                    # Postgres 端 pgvector 扩展本身也 >=0.7.0(本机装的是 0.8.1)
 numpy
 
 # ---- Step1 naive RAG 原型 / 评测（planning/step1-naive-rag/）----
 scikit-learn        # build_and_eval_bm25.py 用 CountVectorizer 做 BM25 对比
-openai              # naive_rag.py 走 OpenAI 兼容接口调用 LLM（换 base_url 可接国产模型）
+
+# ---- LLM adapter（backend/llm/adapter.py + providers/）----
+# 三选一或都装都行——用哪个由 .env 里的 LLM_PROVIDER_DEV/LLM_PROVIDER_PROD 决定，
+# 不是装了就一定用，见 .env.example 的说明。
+openai              # provider=openai 或 provider=ollama（Ollama 自带 OpenAI 兼容层，复用同一个包）
+anthropic           # provider=anthropic
+# Ollama 本身不是 pip 包——它是本机常驻服务，用 `brew install ollama`（macOS）装，
+# 装完 `ollama pull <model>` 拉一个模型、`ollama serve` 常驻起来（一般装完会自动跑）
+
+# ---- API 层（api/main.py，D26）----
+fastapi
+uvicorn             # 生产/本地都用它跑：uvicorn api.main:app
+sse-starlette       # 目前 api/main.py 用的是手写 SSE(纯字符串拼 "event:.../data:...")，
+                    # 没有直接依赖这个包；先声明是因为 FastAPI 生态标准的 SSE 方案就是它，
+                    # 后续要换成官方 EventSourceResponse 时不用再补依赖
+httpx               # fastapi.testclient.TestClient 需要，tests/integration/test_api_chat_sse.py 用
+
+# ---- 可观测（ENGINEERING §6，阶段 6 Langfuse 全链路）----
+# 包要装。没配 LANGFUSE_PUBLIC_KEY/SECRET_KEY 时 SDK 是 no-op，聊天照跑；
+# 配了 key 但没装这个包，会打 warning 然后整段 tracing 关掉（本机刚踩过）。
+langfuse>=3.0,<4
+
+# ---- Lint（ENGINEERING §8 CI pipeline 第一步，规则集见 ruff.toml）----
+ruff
 
 # ---- 可选 ----
 # docling           # D23：表格密集型 PDF（GB7718-2025.pdf、Daily Serving Sizes.pdf）优先路径；

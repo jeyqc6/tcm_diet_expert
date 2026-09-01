@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
     -- BGE-M3 dense 向量固定 1024 维；换模型要改维度并重建表/索引
     embedding       vector(1024) NOT NULL,
+    -- BGE-M3 sparse(词法)向量——同一次 model.encode()顺带产出的第二路输出，
+    -- 不是另一个模型。维度=BGE-M3 底层 XLM-R tokenizer 的 vocab_size(250002，
+    -- 实测值，见 db/embed_bge_m3.py EMBED_DIM_SPARSE 注释)，每个非零位对应
+    -- 一个 token id 的词法权重。可空——旧数据/增量 ingest 还没跑过 sparse
+    -- 编码时，混合检索(_retrieval_common.py)按"这一路没有数据"静默降级，
+    -- 不強制要求这一列非空。用于缓解纯稠密向量对"疏肝""祛湿"这类专业术语
+    -- 精确命中不够稳的问题(2026-08-30，检索评分方法优化)。
+    sparse_embedding sparsevec(250002),
     embed_model     TEXT NOT NULL DEFAULT 'BAAI/bge-m3',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -75,6 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source
 -- 数据量现在约 1 万级，HNSW 即可；百万级再考虑调 m / ef_construction。
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding_hnsw
     ON knowledge_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- sparsevec 目前不建索引——同样是万级行量级，顺序扫描足够快(同 D4 对稠密
+-- 向量在这个规模下"HNSW 只是锦上添花,不是必需"的判断一致)，且 pgvector
+-- 的 sparsevec HNSW 支持相对新，不必要为了这个规模的数据引入额外风险。
 
 -- 检索示例（限定中医 collection，取 top 5）：
 --   SELECT chunk_id, source_file, left(text, 120) AS preview, 1 - (embedding <=> $1) AS score
@@ -93,6 +105,9 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding_hnsw
 CREATE TABLE IF NOT EXISTS user_profile (
     id                          BIGSERIAL PRIMARY KEY,
     user_id                     TEXT NOT NULL DEFAULT 'default_user' UNIQUE,
+    -- 前端用户切换器显示用的名字（如"我"/"老公"）——纯展示字段，不参与任何匹配/
+    -- 查询逻辑，`user_id` 才是真正的外键/隔离键。为空时前端退回显示 user_id 本身。
+    display_name                TEXT,
     -- 主体质（CCMQ 九分类之一，如 qi_xu/yang_xu/tan_shi/ping_he...），CCMQ 计分下最高转化分对应的类型，或用户自述
     constitution                TEXT,
     -- 次要体质（体质夹杂，D28）：CCMQ 计分下达到"倾向是"阈值但非最高分的类型；用户自述路径下通常为空
@@ -102,6 +117,16 @@ CREATE TABLE IF NOT EXISTS user_profile (
     -- 人在环确认发生的时间；为空表示还没走过确认流程。体质是相对稳定的属性，不随饮食记录自动漂移
     constitution_confirmed_at   TIMESTAMPTZ,
     allergens                   TEXT[] NOT NULL DEFAULT '{}',
+    -- 用户所在城市（自然语言，如"上海"/"San Francisco"），两个消费者：
+    -- 1) query_weather 的 city 参数直接从这读，不用每次对话都问一遍用户在哪
+    -- 2) timezone 为空时，query_diet_log 等需要"今天"这类相对日期的地方可以拿它做兜底提示
+    --    （但不做"从城市名自动反查时区"这种地理编码，容易在时区边界/夏令时上出错——
+    --    timezone 才是被代码实际使用的字段，city 主要是给 query_weather 用、给 timezone 兜底提供人类可读的线索）
+    city                        TEXT,
+    -- IANA 时区名（如 "Asia/Shanghai"），相对日期解析("今天"/"昨天")和"当前时间"判断的权威依据。
+    -- 为空时退到 DIET_EXPERT_TZ 环境变量，再没有就是 Asia/Shanghai——见 backend/mcp_server/tools/query_diet_log.py。
+    -- 首次使用引导（§11）问 city 时应该一起问/推导 timezone 并显式确认，不从 city 静默猜。
+    timezone                    TEXT,
     -- 在服补剂，结构未强定（如 [{"name": "维生素D", "dose": "1000IU/day"}]）
     supplements                 JSONB NOT NULL DEFAULT '[]'::jsonb,
     -- D16：定性目标标签（如 weight_management），不含热量缺口/体重目标这类数值
@@ -109,8 +134,24 @@ CREATE TABLE IF NOT EXISTS user_profile (
     -- D25：忌口/口味耐受/长期性用餐场景限制（如 {"dislikes": ["香菜"], "spice_tolerance": "high"}）
     -- 回答"方案要符合哪些约束"，和 goal_tags"身体希望往哪个方向调理"是两件不同的事，不要合并
     preferences                 JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- True after the first-conversation intro finishes (answered or「全部跳过」).
+    -- create_user() stubs stay FALSE so chat still starts onboarding; do not
+    -- infer this from empty constitution / constitution_source.
+    onboarding_done             BOOLEAN NOT NULL DEFAULT FALSE,
+    -- UI / conversation language for this user (frontend toggle). Default zh
+    -- so existing rows and clients stay Chinese. Not inferred from Accept-Language.
+    locale                      TEXT NOT NULL DEFAULT 'zh' CHECK (locale IN ('zh', 'en')),
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Existing databases created before locale existed: ADD COLUMN is a no-op when
+-- the column is already there (fresh CREATE TABLE above already includes it).
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'zh';
+UPDATE user_profile SET locale = 'zh' WHERE locale IS NULL;
+ALTER TABLE user_profile ALTER COLUMN locale SET DEFAULT 'zh';
+ALTER TABLE user_profile ALTER COLUMN locale SET NOT NULL;
+ALTER TABLE user_profile DROP CONSTRAINT IF EXISTS user_profile_locale_check;
+ALTER TABLE user_profile ADD CONSTRAINT user_profile_locale_check CHECK (locale IN ('zh', 'en'));
 
 CREATE INDEX IF NOT EXISTS idx_user_profile_allergens ON user_profile USING GIN (allergens);
 
@@ -164,7 +205,20 @@ CREATE TABLE IF NOT EXISTS messages (
     turn_index          INTEGER NOT NULL,
     role                TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool')),
     content             TEXT NOT NULL,
-    -- D27：0=原文,1/2=按 Tier 摘要,3=跨会话摘要指针，见 ARCHITECTURE.md §4.4
+    -- D27 补充(2026-08-28，backend/memory/compression.py 接线)：结构化归档摘要
+    -- (TurnRecord/ArchivedSummary)需要的字段，raw(tier0)行写入时就填好，归档
+    -- 时不需要重新解析 content 才能拿到 branch/结论/引用/被拒建议/guardrail。
+    branch                  TEXT,
+    conclusion              TEXT,
+    cited_source_ids        TEXT[] NOT NULL DEFAULT '{}',
+    rejected_suggestions    TEXT[] NOT NULL DEFAULT '{}',
+    triggered_guardrails    TEXT[] NOT NULL DEFAULT '{}',
+    -- compression_tier 取值约定(backend/memory/session_store.py 消费)：
+    --   0 = Tier1，原文，当前会话，尚未归档
+    --   1 = Tier2，结构化归档摘要，会话仍在进行中(未判定空闲)
+    --   2 = 保留未使用
+    --   3 = Tier3，结构化归档摘要，会话已判定结束(跨会话)
+    -- 见 ARCHITECTURE.md §4.4/§4.4.1、DECISIONS.md D27/D27 补充。
     compression_tier    SMALLINT NOT NULL DEFAULT 0 CHECK (compression_tier IN (0, 1, 2, 3)),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (session_id, turn_index)
@@ -226,3 +280,47 @@ CREATE TABLE IF NOT EXISTS user_dish_aliases (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, normalized_phrase)
 );
+
+
+-- =============================================================================
+-- pending_critical_facts · PRD §10.2 human-in-the-loop (D34)
+-- =============================================================================
+-- Scanner hits land here until the user confirms. Not merged into the current
+-- turn's UserProfileContext and not UPSERTed into user_profile until confirm.
+
+CREATE TABLE IF NOT EXISTS pending_critical_facts (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL DEFAULT 'default_user',
+    session_id      TEXT NOT NULL,
+    allergens       TEXT[] NOT NULL DEFAULT '{}',
+    supplements     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Pending clarification (D20 #3 / D33) and in-progress chat onboarding.
+-- Process-local InMemory stores lose these on restart; Postgres is the default.
+
+CREATE TABLE IF NOT EXISTS pending_clarifications (
+    session_id      TEXT PRIMARY KEY,
+    original_text   TEXT NOT NULL,
+    branch          TEXT NOT NULL,
+    domain_hint     TEXT,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS onboarding_sessions (
+    user_id         TEXT PRIMARY KEY,
+    step_id         TEXT NOT NULL,
+    state           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Idempotent for existing volumes: CREATE TABLE IF NOT EXISTS does not add columns.
+ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Rows that already have constitution data (or the previous skip latch) have
+-- been through intro; brand-new create_user stubs stay FALSE.
+UPDATE user_profile
+SET onboarding_done = TRUE
+WHERE onboarding_done = FALSE
+  AND (constitution IS NOT NULL OR constitution_source IS NOT NULL);

@@ -1,0 +1,167 @@
+# diet_expert · 一键起（ENGINEERING §9，roadmap 阶段4.2 "docker compose up + healthz"）
+#
+# 用法：
+#   cp .env.example .env   # 至少填 LLM_API_KEY/OPENAI_API_KEY 或 ANTHROPIC_API_KEY
+#                           # 才能真的聊天；不填的话 healthz 照样通,只是 /api/chat 会报错
+#   docker compose up --build
+#   打开 http://localhost:3000
+#
+# 完成判据"删本地卷重来一遍,90s内可用"指的是：镜像已经 build 过之后，
+# `docker compose down -v && docker compose up -d`，90s 内 GET /healthz 返回 200。
+# 首次 `docker compose build`（装 torch）和首次拉 BGE-M3 权重不计入这 90s——
+# 那是网络/镜像层的事，不是进程冷启动。
+#
+# 启动顺序（ENGINEERING §9）：Postgres → schema init → seed(conflict_rules)
+# → API → 前端。knowledge_chunks 的 embedding ingest **不**在这条路径上，
+# 否则每次起容器都要跑若干分钟（PRD §12.1 全量重建 <10 分钟；§9 明确
+# "ingest 不放在启动路径上"）。需要检索数据时三选一：
+#   A. docker compose --profile ingest up ingest
+#      容器内 CPU 嵌入。能跑，但 5837 条是小时级，不是 <10 分钟那条指标
+#      （那条指标默认宿主机 MPS/GPU）。知识源是 knowledge/_processed/*.jsonl
+#      （knowledge/ 在 .gitignore，干净 clone 没有这份数据，会诚实失败）。
+#   B. 宿主机已经有同结构的 knowledge_chunks（本机开发库就是这样）：
+#      pg_dump -d diet_expert -t knowledge_chunks --data-only --no-owner \
+#        | docker exec -i diet_expert-postgres-1 psql -U diet_expert -d diet_expert
+#   C. 宿主机 MPS/GPU 重新嵌入，写入容器库（发布端口 5433，避开本机 5432）：
+#      DIET_EXPERT_PG_DSN=postgresql://diet_expert:diet_expert@127.0.0.1:5433/diet_expert \
+#        python3 db/embed_bge_m3.py load --root .
+#
+# 数据卷：pgdata 持久化库（含灌进去的向量）；hf_cache 持久化 BGE-M3 权重。
+# `down` 不带 -v 重启不丢；`down -v` 两者一起删，库回到空 schema，权重要重下。
+
+services:
+  postgres:
+    # 官方 postgres 镜像不带 pgvector 扩展，db/schema.sql 里的
+    # `CREATE EXTENSION vector` 会失败——必须用带 pgvector 的镜像。
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: diet_expert
+      POSTGRES_USER: diet_expert
+      POSTGRES_PASSWORD: diet_expert
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Postgres 官方镜像的约定：容器首次初始化(数据目录为空)时会自动执行
+      # 这个目录下的 .sql/.sh，按文件名排序——用来自动建表，不用手动
+      # `psql -f db/schema.sql`。仅在首次初始化时跑，卷不删的话改了
+      # schema.sql 不会自动生效，需要手动迁移(见 ENGINEERING §4.1 Alembic)。
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      # 5433 on the host, not 5432: this machine (and many local Postgres
+      # installs) already binds 127.0.0.1:5432, so publishing 5432 here would
+      # look like it worked (`docker compose ps` shows the mapping) while
+      # host-side `psql`/`embed_bge_m3.py` actually hit the *other* Postgres.
+      # Containers talk to postgres:5432 on the compose network; only host
+      # tools need this published port.
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diet_expert -d diet_expert"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # 40 条 conflict_rules，秒级，走启动路径。evals/ 被 .dockerignore 排除、
+  # 不进镜像，运行时 bind-mount；load_conflict_rules.py 本身幂等（全量同步）。
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DIET_EXPERT_PG_DSN: postgresql://diet_expert:diet_expert@postgres:5432/diet_expert
+    volumes:
+      - ./evals:/app/evals:ro
+    command: ["python3", "db/load_conflict_rules.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # 知识库 embedding。profile 默认关闭，不挡 90s 冷启动。
+  # 复用 API 镜像（里面已经有 FlagEmbedding/torch）；CPU 容器关 fp16。
+  ingest:
+    profiles: ["ingest"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DIET_EXPERT_PG_DSN: postgresql://diet_expert:diet_expert@postgres:5432/diet_expert
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+      - ./knowledge/_processed:/app/knowledge/_processed:ro
+    command: ["python3", "db/embed_bge_m3.py", "--no-fp16", "load", "--root", "."]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DIET_EXPERT_PG_DSN: postgresql://diet_expert:diet_expert@postgres:5432/diet_expert
+      # Compose healthcheck hits /healthz; this flag makes it actually check
+      # DB + pgvector + HNSW index. Unit tests do not set it, so they stay
+      # process-liveness-only and do not need a live Postgres.
+      HEALTHZ_CHECK_DB: "1"
+      MODEL_TIER: ${MODEL_TIER:-dev}
+      LLM_PROVIDER_DEV: ${LLM_PROVIDER_DEV:-}
+      LLM_PROVIDER_PROD: ${LLM_PROVIDER_PROD:-}
+      LLM_MODEL_DEV: ${LLM_MODEL_DEV:-}
+      LLM_MODEL_PROD: ${LLM_MODEL_PROD:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      # macOS/Windows 上容器访问宿主机用这个特殊域名；provider=ollama 时如果
+      # Ollama 跑在宿主机(而不是另一个容器，这次没有把 Ollama 也容器化——见
+      # 根目录 requirements.txt 的说明，Ollama 是本机常驻服务不是 pip/容器依赖)，
+      # 要把 OLLAMA_BASE_URL 指到这个地址，不是 localhost(容器里的 localhost
+      # 是容器自己，不是宿主机)。
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
+      # Langfuse is optional. Empty keys → no-op tracing (ENGINEERING §6).
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT:-}
+      LANGFUSE_CAPTURE_IO: ${LANGFUSE_CAPTURE_IO:-}
+      LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # BGE-M3 权重下载缓存到这个卷里，避免每次重启都重新下载（见上方大注释）。
+      HF_HOME: /root/.cache/huggingface
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "8123:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    # NEXT_PUBLIC_API_BASE_URL 特意不在这里传——Next.js 的 NEXT_PUBLIC_* 变量
+    # 是构建期烧进客户端 JS 里的，不是运行时读的，这里传了也不生效(需要走
+    # docker build --build-arg 才行)。frontend/src/app/page.tsx 的默认值已经
+    # 是 http://localhost:8123，正好匹配下面 api 服务映射到宿主机的端口——
+    # 浏览器本身跑在宿主机上，访问的是宿主机的 8123/3000，不是容器内部地址，
+    # 默认值不用改，不需要额外的构建参数线路。
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  hf_cache:
