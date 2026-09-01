@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+from functools import partial
 from datetime import date
 from pathlib import Path
 
@@ -270,9 +271,9 @@ def main():
     for pool in pools:
         print(f"pool={pool} n={len(items)} k={args.k}", flush=True)
         if pool == "domain":
-            retrieve = lambda row, k, _dsn=dsn: retrieve_domain(row, k, _dsn)
+            retrieve = partial(retrieve_domain, dsn=dsn)
         elif pool == "all":
-            retrieve = lambda row, k, _dsn=dsn: retrieve_all(row, k, _dsn)
+            retrieve = partial(retrieve_all, dsn=dsn)
         else:
             print(f"unknown pool {pool}", file=sys.stderr)
             sys.exit(1)
