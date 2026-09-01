@@ -16,6 +16,24 @@ from backend.llm.providers.openai_compatible import OpenAICompatibleProvider
 SUPPORTED_PROVIDERS = ("openai", "anthropic", "deepseek", "ollama", "openrouter")
 
 _DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
+# 2026-09-01：DeepSeek 是带内部推理的模型，推理本身也吃 max_tokens 预算——
+# 沿用真的 Anthropic 那份 1024 默认值时，真实观察到预算被推理吃光、
+# `text` 抽出来是空字符串（见 anthropic_provider.py DEFAULT_MAX_TOKENS 注释）。
+# 只调大 DeepSeek 这一路的默认值，不动真的 Anthropic（1024 那边一直够用，
+# 没有理由跟着一起改）。可以用 DEEPSEEK_MAX_TOKENS 覆盖，不用改代码重新实测。
+_DEEPSEEK_DEFAULT_MAX_TOKENS = 8192
+
+
+def _deepseek_max_tokens() -> int:
+    load_env()
+    raw = (os.environ.get("DEEPSEEK_MAX_TOKENS") or "").strip()
+    if not raw:
+        return _DEEPSEEK_DEFAULT_MAX_TOKENS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _DEEPSEEK_DEFAULT_MAX_TOKENS
+    return value if value > 0 else _DEEPSEEK_DEFAULT_MAX_TOKENS
 
 
 def build_provider(name: str, *, timeout_s: float):
@@ -47,6 +65,7 @@ def build_provider(name: str, *, timeout_s: float):
             api_key=os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"),
             base_url=os.environ.get("DEEPSEEK_BASE_URL", _DEEPSEEK_ANTHROPIC_BASE_URL),
             timeout_s=timeout_s,
+            default_max_tokens=_deepseek_max_tokens(),
         )
     if name == "openrouter":
         # OpenRouter 本身就是一层 OpenAI 兼容代理(转发到几十家上游模型)，复用

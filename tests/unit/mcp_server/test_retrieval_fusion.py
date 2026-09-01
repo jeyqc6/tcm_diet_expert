@@ -17,6 +17,7 @@ from backend.mcp_server.tools._retrieval_common import (
     _run_coroutine_sync,
     generate_query_variants,
     reciprocal_rank_fusion,
+    warm_embedder_enabled,
 )
 
 
@@ -138,3 +139,18 @@ def test_run_coroutine_sync_from_inside_a_running_event_loop():
         return _run_coroutine_sync(coro())
 
     assert asyncio.run(call_from_inside_running_loop()) == "result-from-nested-loop"
+
+
+# ---------------------------------------------------------------------------
+# warm_embedder_enabled
+# ---------------------------------------------------------------------------
+
+
+def test_warm_embedder_enabled_defaults_on(monkeypatch):
+    monkeypatch.delenv("DIET_EXPERT_WARM_EMBEDDER", raising=False)
+    assert warm_embedder_enabled() is True
+
+
+def test_warm_embedder_enabled_respects_zero(monkeypatch):
+    monkeypatch.setenv("DIET_EXPERT_WARM_EMBEDDER", "0")
+    assert warm_embedder_enabled() is False

@@ -108,6 +108,7 @@ from backend.llm.adapter import CompleteFn
 from backend.logging_config import configure_logging
 from backend.mcp_server.roles import CallerRole
 from backend.mcp_server.server import DietExpertMcpServer
+from backend.mcp_server.tools._retrieval_common import warm_embedder, warm_embedder_enabled
 from backend.memory import session_store
 from backend.memory.compression import TurnRecord
 from backend.memory.critical_fact_scanner import (
@@ -213,6 +214,15 @@ async def lifespan(_app: FastAPI):
     _pending_critical_store_singleton = default_pending_store()
     _onboarding_store_singleton = default_onboarding_store()
     _clarification_store_singleton = default_clarification_store()
+    if warm_embedder_enabled():
+        try:
+            logger.info("warming BGE-M3 embedder at startup")
+            await asyncio.to_thread(warm_embedder)
+        except Exception:
+            logger.warning(
+                "BGE-M3 embedder warmup failed; first retrieval may be slow",
+                exc_info=True,
+            )
     yield
     flush_tracing()
 

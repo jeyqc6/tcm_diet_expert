@@ -40,7 +40,7 @@ class UnauthorizedToolAttempt:
 # 现在多用户了也不能让 LLM 自己填这个参数——它填的话就是在猜/编一个用户身份，
 # 不是"哪个真实用户在跟它对话"这件事该由模型判断的)。真实值从 session 打开时
 # 传入的 `user_id` 上取，`call_tool` 在派发前替调用方补上，SubAgent 自己感知不到。
-_USER_SCOPED_TOOLS = frozenset({"query_diet_log", "write_memory"})
+_USER_SCOPED_TOOLS = frozenset({"query_diet_log", "query_weather", "write_memory"})
 
 
 @dataclass

@@ -113,6 +113,24 @@ def test_anthropic_extracts_system_message_and_sets_default_max_tokens(monkeypat
     assert resp.stop_reason == "stop"
 
 
+def test_anthropic_uses_constructor_default_max_tokens_when_given(monkeypatch):
+    """`default_max_tokens` 是给 DeepSeek 这类带内部推理的 provider 单独调大
+    预算用的构造参数(见 registry.py `deepseek` 分支)——确认它真的会被送进
+    `max_tokens`，不是只存了没用上。"""
+    provider = AnthropicProvider(api_key="fake-key", timeout_s=1, default_max_tokens=8192)
+
+    captured = {}
+
+    async def _fake_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(content=[], stop_reason="end_turn")
+
+    provider._client.messages.create = _fake_create
+    _run(provider.call([{"role": "user", "content": "hi"}], model="deepseek-x"))
+
+    assert captured["max_tokens"] == 8192
+
+
 def test_anthropic_extracts_usage():
     provider = AnthropicProvider(api_key="fake-key", timeout_s=1)
 

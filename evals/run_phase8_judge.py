@@ -72,7 +72,12 @@ async def judge_one(complete, user_msg: str) -> dict | None:
                 {"role": "user", "content": user_msg},
             ],
             temperature=0.0,
-            max_tokens=400,
+            # Reasoning models (e.g. glm-5.3-flash) spend completion_tokens on
+            # a hidden reasoning_content pass before ever emitting the JSON
+            # body — 400 was tuned for non-reasoning judges and left the
+            # model no budget for the actual answer (finish_reason="length",
+            # content=""). 1500 leaves headroom for both.
+            max_tokens=1500,
         )
         parsed = _parse_json_object(result.text or "")
         if parsed is not None:

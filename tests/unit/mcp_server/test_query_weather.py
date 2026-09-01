@@ -159,3 +159,69 @@ def test_rejects_empty_city():
 def test_rejects_bad_date():
     with pytest.raises(ValueError):
         query_weather("上海", date="08/29", http_get_json=_forecast_ok())
+
+
+def test_accepts_relative_today_aliases():
+    clock = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
+    for expr in ("today", "Today", "今天"):
+        result = query_weather(
+            "上海",
+            date=expr,
+            http_get_json=_forecast_ok(),
+            now=clock,
+        )
+        assert result["date"] == "2026-08-29"
+
+
+def test_accepts_relative_yesterday_and_tomorrow():
+    clock = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
+    yesterday = query_weather(
+        "上海",
+        date="yesterday",
+        http_get_json=_forecast_ok(),
+        now=clock,
+    )
+    tomorrow = query_weather(
+        "上海",
+        date="明天",
+        http_get_json=_forecast_ok(),
+        now=clock,
+    )
+    assert yesterday["date"] == "2026-08-28"
+    assert tomorrow["date"] == "2026-08-30"
+
+
+def test_relative_today_uses_user_timezone(monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(
+        "backend.mcp_server.tools.query_weather._get_tz",
+        lambda user_id, dsn=None: ZoneInfo("America/Los_Angeles"),
+    )
+    # 2026-08-29 02:00 UTC is still 2026-08-28 in Los Angeles.
+    clock = datetime(2026, 8, 29, 2, 0, tzinfo=timezone.utc)
+    result = query_weather(
+        "上海",
+        date="today",
+        http_get_json=_forecast_ok(),
+        now=clock,
+    )
+    assert result["date"] == "2026-08-28"
+
+
+def test_accepts_slash_and_chinese_date_formats():
+    clock = datetime(2026, 8, 29, 12, 0, tzinfo=timezone.utc)
+    slash = query_weather(
+        "上海",
+        date="2026/08/29",
+        http_get_json=_forecast_ok(),
+        now=clock,
+    )
+    chinese = query_weather(
+        "上海",
+        date="2026年8月29日",
+        http_get_json=_forecast_ok(),
+        now=clock,
+    )
+    assert slash["date"] == "2026-08-29"
+    assert chinese["date"] == "2026-08-29"

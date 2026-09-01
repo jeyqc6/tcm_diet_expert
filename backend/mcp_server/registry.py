@@ -87,11 +87,21 @@ def default_tool_definitions() -> dict[str, ToolDefinition]:
         ),
         TOOL_QUERY_WEATHER: ToolDefinition(
             name=TOOL_QUERY_WEATHER,
-            description="Weather via Open-Meteo (cached); fallback to solar-term table.",
+            description=(
+                "Weather via Open-Meteo (cached); fallback to solar-term table. "
+                "date: YYYY-MM-DD, or relative (today/yesterday/tomorrow/今天/昨天/明天); "
+                "omit for today."
+            ),
             input_schema=_object_schema(
                 {
                     "city": {"type": "string"},
-                    "date": {"type": ["string", "null"]},
+                    "date": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Target day: YYYY-MM-DD, or relative "
+                            "(today/yesterday/tomorrow/今天/昨天/明天). Defaults to today."
+                        ),
+                    },
                     "include_recent_days": {"type": "integer", "default": 3},
                 },
                 required=["city"],

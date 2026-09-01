@@ -233,7 +233,7 @@ python3 db/embed_bge_m3.py load --root .
 uvicorn api.main:app --reload --host 127.0.0.1 --port 8123
 ```
 
-`--reload` 改 `api/`、`backend/` 会自动重启。本地默认 `/healthz` 只检查进程存活；compose 里才设 `HEALTHZ_CHECK_DB=1` 去查库。
+`--reload` 改 `api/`、`backend/` 会自动重启。每次重启后 API 默认会在 lifespan 里 **warm 一次 BGE-M3**（`DIET_EXPERT_WARM_EMBEDDER=1`，见 `.env.example`），把模型加载和首次 forward 摊到启动阶段，避免第一条检索请求撞上冷启动 + 并发 embed。CI/单测可设 `DIET_EXPERT_WARM_EMBEDDER=0` 跳过。本地默认 `/healthz` 只检查进程存活；compose 里才设 `HEALTHZ_CHECK_DB=1` 去查库。
 
 ```bash
 curl -s http://127.0.0.1:8123/healthz

@@ -46,6 +46,7 @@ jobs:
           # 显式声明，即便这就是默认值——离线回放，不打真实网络，不需要任何
           # LLM API key(backend/llm/providers/replay.py 的设计意图)。
           LLM_REPLAY_MODE: replay
+          DIET_EXPERT_WARM_EMBEDDER: "0"
         run: python3 -m pytest tests/ -q
 
   smoke-eval:

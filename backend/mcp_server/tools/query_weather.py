@@ -8,21 +8,28 @@ ARCHITECTURE §2.2 · ENGINEERING §1.3 / §3 · PRD §11 (weather API fail → 
 Bounded by design: stdlib urllib, no weather SDK. HTTP is injectable so unit
 tests never hit the network. Circuit opens after 3 consecutive failures and
 returns the solar-term table silently until a later successful fetch.
+
+Relative dates (today/yesterday/明天) resolve in the same timezone chain as
+`query_diet_log`: user_profile.timezone > DIET_EXPERT_TZ > Asia/Shanghai.
+`user_id` is injected by the MCP session (not part of the public tool schema).
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date as date_cls
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 from backend.i18n import current_locale, normalize_locale
+from backend.mcp_server.tools.query_diet_log import _get_tz
 
 JsonFetcher = Callable[[str], dict[str, Any]]
 
@@ -97,13 +104,57 @@ def _normalize_city(city: str) -> str:
     return city.strip()
 
 
+_RELATIVE_DAY_OFFSETS = {
+    "今天": 0,
+    "今日": 0,
+    "today": 0,
+    "昨天": 1,
+    "昨日": 1,
+    "yesterday": 1,
+    "前天": 2,
+    "the day before yesterday": 2,
+    "明天": -1,
+    "明日": -1,
+    "tomorrow": -1,
+    "后天": -2,
+    "the day after tomorrow": -2,
+}
+_ISO_DATE_PATTERN = re.compile(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$")
+_CN_DATE_PATTERN = re.compile(r"^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日$")
+
+
+def _clock_in_weather_tz(now: datetime | None, tz: ZoneInfo) -> datetime:
+    if now is None:
+        return datetime.now(tz)
+    if now.tzinfo is None:
+        return now.replace(tzinfo=tz)
+    return now.astimezone(tz)
+
+
 def _parse_date(value: str | None, *, now: datetime) -> date_cls:
-    if not value:
+    if value is None or not str(value).strip():
         return now.date()
+
+    expr = str(value).strip()
+    key = expr.casefold()
+    if key in _RELATIVE_DAY_OFFSETS:
+        return now.date() - timedelta(days=_RELATIVE_DAY_OFFSETS[key])
+
     try:
-        return date_cls.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError("date must be YYYY-MM-DD") from exc
+        return date_cls.fromisoformat(expr)
+    except ValueError:
+        pass
+
+    for pattern in (_ISO_DATE_PATTERN, _CN_DATE_PATTERN):
+        match = pattern.fullmatch(expr)
+        if match:
+            year, month, day = (int(part) for part in match.groups())
+            return date_cls(year, month, day)
+
+    raise ValueError(
+        "date must be YYYY-MM-DD or a relative day "
+        "(today/yesterday/tomorrow/今天/昨天/明天)"
+    )
 
 
 def solar_term_for(day: date_cls) -> dict[str, str]:
@@ -277,6 +328,8 @@ def query_weather(
     date: str | None = None,
     include_recent_days: int = 3,
     *,
+    user_id: str = "default_user",
+    dsn: str | None = None,
     http_get_json: JsonFetcher | None = None,
     now: datetime | None = None,
     language: str | None = None,
@@ -289,7 +342,8 @@ def query_weather(
         raise ValueError("include_recent_days must be >= 0")
 
     resolved_city = _normalize_city(city)
-    clock = now or datetime.now(timezone.utc)
+    tz = _get_tz(user_id, dsn)
+    clock = _clock_in_weather_tz(now, tz)
     day = _parse_date(date, now=clock)
     resolved_language = normalize_locale(language if language is not None else current_locale())
     cache_key = (resolved_city.casefold(), day.isoformat(), include_recent_days, resolved_language)

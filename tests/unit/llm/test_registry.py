@@ -69,6 +69,38 @@ def test_deepseek_is_listed_as_supported():
     assert "deepseek" in SUPPORTED_PROVIDERS
 
 
+def test_deepseek_default_max_tokens_is_larger_than_anthropic(monkeypatch):
+    """2026-09-01：DeepSeek 是带内部推理的模型，推理本身也吃 max_tokens——真实
+    观察到用真的 Anthropic 那份 1024 默认值时，预算被推理吃光，text 抽出来是
+    空字符串。DeepSeek 单独给一个大得多的默认值，真的 Anthropic 不动。"""
+    from backend.llm.providers.anthropic_provider import DEFAULT_MAX_TOKENS
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-x")
+    monkeypatch.delenv("DEEPSEEK_MAX_TOKENS", raising=False)
+    provider = build_provider("deepseek", timeout_s=1)
+    assert provider._default_max_tokens > DEFAULT_MAX_TOKENS
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+    anthropic_provider = build_provider("anthropic", timeout_s=1)
+    assert anthropic_provider._default_max_tokens == DEFAULT_MAX_TOKENS
+
+
+def test_deepseek_max_tokens_is_overridable(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-x")
+    monkeypatch.setenv("DEEPSEEK_MAX_TOKENS", "2048")
+    provider = build_provider("deepseek", timeout_s=1)
+    assert provider._default_max_tokens == 2048
+
+
+def test_deepseek_max_tokens_falls_back_on_invalid_env(monkeypatch):
+    from backend.llm.providers.registry import _DEEPSEEK_DEFAULT_MAX_TOKENS
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-x")
+    monkeypatch.setenv("DEEPSEEK_MAX_TOKENS", "not-a-number")
+    provider = build_provider("deepseek", timeout_s=1)
+    assert provider._default_max_tokens == _DEEPSEEK_DEFAULT_MAX_TOKENS
+
+
 def test_openrouter_defaults_to_openrouter_base_url(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-x")
     monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)

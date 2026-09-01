@@ -39,6 +39,7 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -68,6 +69,11 @@ EMBED_DIM = 1024
 # 不是猜的常数；换 embedding 模型这个数字也要跟着换。
 EMBED_DIM_SPARSE = 250_002
 DEFAULT_BATCH = 16  # M3 较大，本地 CPU/小显存先保守一点
+
+# BGE-M3 / PyTorch forward is not thread-safe in one process (especially on
+# Apple MPS with fp16). Concurrent encode() from asyncio.to_thread workers can
+# hang or segfault — serialize all inference behind this lock.
+_INFERENCE_LOCK = threading.Lock()
 
 
 def require_pg():
@@ -140,16 +146,17 @@ class BgeM3Embedder:
 
     def encode(self, texts: list[str], batch_size: int = DEFAULT_BATCH) -> np.ndarray:
         """Return L2-normalized dense vectors, shape (n, 1024)."""
-        # BGE-M3: return_dense=True is enough for pgvector; sparse/colbert 另存
-        out = self.model.encode(
-            texts,
-            batch_size=batch_size,
-            max_length=8192,
-            return_dense=True,
-            return_sparse=False,
-            return_colbert_vecs=False,
-        )["dense_vecs"]
-        return self._normalize(np.asarray(out, dtype=np.float32))
+        with _INFERENCE_LOCK:
+            # BGE-M3: return_dense=True is enough for pgvector; sparse/colbert 另存
+            out = self.model.encode(
+                texts,
+                batch_size=batch_size,
+                max_length=8192,
+                return_dense=True,
+                return_sparse=False,
+                return_colbert_vecs=False,
+            )["dense_vecs"]
+            return self._normalize(np.asarray(out, dtype=np.float32))
 
     def encode_hybrid(
         self, texts: list[str], batch_size: int = DEFAULT_BATCH
@@ -158,20 +165,21 @@ class BgeM3Embedder:
         顺带产出两路输出，不是跑两次模型。sparse 部分是 BGE-M3 自己的稀疏
         词法权重(不是 BM25，但解决同一类"专有名词精确命中"问题，见 D2.6节
         混合检索的设计动机)，key 是 token id(int)，value 是权重。"""
-        out = self.model.encode(
-            texts,
-            batch_size=batch_size,
-            max_length=8192,
-            return_dense=True,
-            return_sparse=True,
-            return_colbert_vecs=False,
-        )
-        dense = self._normalize(np.asarray(out["dense_vecs"], dtype=np.float32))
-        sparse = [
-            {int(token_id): float(weight) for token_id, weight in d.items()}
-            for d in out["lexical_weights"]
-        ]
-        return dense, sparse
+        with _INFERENCE_LOCK:
+            out = self.model.encode(
+                texts,
+                batch_size=batch_size,
+                max_length=8192,
+                return_dense=True,
+                return_sparse=True,
+                return_colbert_vecs=False,
+            )
+            dense = self._normalize(np.asarray(out["dense_vecs"], dtype=np.float32))
+            sparse = [
+                {int(token_id): float(weight) for token_id, weight in d.items()}
+                for d in out["lexical_weights"]
+            ]
+            return dense, sparse
 
     @staticmethod
     def _normalize(arr: np.ndarray) -> np.ndarray:

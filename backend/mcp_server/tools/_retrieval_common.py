@@ -80,6 +80,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import os
 import sys
 import threading
 from dataclasses import dataclass
@@ -274,7 +275,10 @@ _EMBEDDER = None
 # SubAgent 的检索调用一起卡死、双双撞上 45s SubAgent 超时。双重检查锁定
 # （`threading.Lock`，不是 `asyncio.Lock`——这个函数从 `asyncio.to_thread` 派生
 # 的工作线程里调用，不在事件循环线程上）保证真正的模型加载只发生一次，其余
-# 线程等锁、拿到已经建好的单例，不重复加载。"""
+# 线程等锁、拿到已经建好的单例，不重复加载。
+# 2026-09-01：模型 init 锁之外，`encode`/`encode_hybrid` forward 也在
+# `db/embed_bge_m3.BgeM3Embedder` 里用全局 `_INFERENCE_LOCK` 串行化——冷启动
+# 后并发 forward（尤其 Mac MPS + fp16）会 hang/segfault/dtype 错误。
 _EMBEDDER_LOCK = threading.Lock()
 
 
@@ -291,6 +295,23 @@ def _get_embedder():
 
                 _EMBEDDER = BgeM3Embedder()
     return _EMBEDDER
+
+
+def warm_embedder_enabled() -> bool:
+    """Whether to preload BGE-M3 on API startup (see DIET_EXPERT_WARM_EMBEDDER)."""
+    raw = os.environ.get("DIET_EXPERT_WARM_EMBEDDER", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def warm_embedder() -> None:
+    """Load BGE-M3 (if needed) and run one hybrid encode to warm caches.
+
+    Intended for uvicorn startup / after ``--reload`` restarts so the first user
+    query does not pay cold-start + concurrent-init cost. Safe to call from
+    ``asyncio.to_thread`` — inference is serialized inside ``BgeM3Embedder``."""
+    embedder = _get_embedder()
+    embedder.encode_hybrid(["warmup"])
+    logger.info("BGE-M3 embedder warmed (model=%s)", embedder.model_id)
 
 
 def _row_to_chunk(row: Sequence[Any]) -> RetrievedChunk:

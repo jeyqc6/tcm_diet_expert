@@ -52,6 +52,13 @@ def _usage_from_anthropic(resp: Any) -> TokenUsage | None:
     )
 
 DEFAULT_MAX_TOKENS = 1024
+# 2026-09-01 真实跑通时发现：DeepSeek(走这个 provider 的 Anthropic 兼容协议)
+# 是带内部推理(thinking)的模型，推理过程本身也计入 max_tokens——预算不够时
+# 会出现"token 真的被消耗了，但 content 里一个 type=='text' 的块都没来得及
+# 吐出来"，`text` 抽出来是空字符串，下游(比如 MQE 的 `json.loads(text)`)
+# 直接炸掉，日志上看是"花了 1000+ token，正文 0 字符"。真的 Anthropic API
+# 目前没观察到这个问题(1024 一直够用)，这里保留 1024 不动；DeepSeek 单独
+# 给一个大得多的默认值，见 `registry.py` 的 `deepseek` 分支。
 
 _STOP_REASON_MAP = {
     "end_turn": "stop",
@@ -116,7 +123,13 @@ def _translate_tools(tools: list[dict] | None) -> list[dict] | None:
 
 
 class AnthropicProvider:
-    def __init__(self, api_key: str | None, timeout_s: float, base_url: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None,
+        timeout_s: float,
+        base_url: str | None = None,
+        default_max_tokens: int = DEFAULT_MAX_TOKENS,
+    ):
         if AsyncAnthropic is None:
             raise RuntimeError("需要 anthropic 包：pip install anthropic")
         client_kwargs: dict[str, Any] = {
@@ -126,6 +139,7 @@ class AnthropicProvider:
         if base_url:
             client_kwargs["base_url"] = base_url
         self._client = AsyncAnthropic(**client_kwargs)
+        self._default_max_tokens = default_max_tokens
 
     async def call(
         self,
@@ -136,7 +150,7 @@ class AnthropicProvider:
         **kwargs,
     ) -> ProviderResponse:
         system_parts, chat_messages = _translate_messages(messages)
-        kwargs.setdefault("max_tokens", DEFAULT_MAX_TOKENS)
+        kwargs.setdefault("max_tokens", self._default_max_tokens)
         if system_parts:
             kwargs["system"] = "\n\n".join(system_parts)
         translated_tools = _translate_tools(tools)
