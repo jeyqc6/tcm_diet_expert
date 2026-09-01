@@ -291,9 +291,9 @@ async def _stream_verification_result(
     verification, trace_id: str, locale: str = "zh"
 ) -> AsyncIterator[str]:
     """把一个已经算好的 `VerificationResult` 变成 SSE 事件序列：(通过则)吐
-    source + token，(不通过则)吐 guardrail + 兜底文本。过敏原硬阻断时只吐
-    安全提示，不展示含过敏原的原始建议(THREAT_MODEL E2)；其他硬阻断同样不
-    展示原始内容。
+    source + token，(不通过则)吐 guardrail + 兜底文本。仅过敏原命中、且无其他
+    硬阻断时：先展示原文，再附安全提示——命中常常是「提到/举例」而非直接
+    推荐食用，由用户结合配料表自行判断；其他硬阻断仍不展示原始内容。
     **这是"核查必须在第一条 token 事件前完成"这条约束真正被强制的地方**——
     调用方必须先 `await _run_verification()` 拿到结果才能调这个函数，不可能
     绕过这个顺序；兜底提示本身是在核查结果已经确定之后才组装的静态文本，
@@ -321,6 +321,9 @@ async def _stream_verification_result(
             )
 
         if allergen_rejected and not other_rejected:
+            for rejected in allergen_rejected:
+                for chunk in chunk_text(strip_citation_markers(rejected.item.text)):
+                    yield sse_event("token", {"text": chunk})
             allergen_names = list(
                 dict.fromkeys(
                     name

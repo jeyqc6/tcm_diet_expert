@@ -1095,11 +1095,9 @@ def test_instruction_injection_is_stripped_before_routing():
 
 
 def test_allergen_hit_blocks_final_answer_end_to_end():
-    """THREAT_MODEL.md E2：过敏原经隐藏成分(蚝油→甲壳类)漏出——此前是"真空"，
-    这里验证 UserProfileContext.allergens 真的被 `_verify_and_stream` 转发进
-    `verify()`，命中后整段被拦。2026-08-31 起拦下之后会吐一条诚实的兜底
-    提示(不是彻底静默)，但含过敏原的原始内容("蚝油"那句话)绝不能出现在
-    吐给用户的 token 文本里——这才是这条测试真正要守住的安全属性。"""
+    """THREAT_MODEL.md E2：过敏原经隐藏成分(蚝油→甲壳类)——核查 pass 要真的
+    在跑，命中后吐 guardrail + 原文 + 安全提示。命中常常是「提到」而非直接
+    推荐，所以展示原文让用户结合配料表自行判断，但必须附带安全提示。"""
     server = _server_with_handlers(
         retrieve_nutrition=lambda **kw: [
             {"source_id": "n1", "domain": "nutrition", "source_file": "b", "source_type": "t",
@@ -1128,8 +1126,9 @@ def test_allergen_hit_blocks_final_answer_end_to_end():
     events = _parse_sse(resp.text)
     event_types = [e for e, _ in events]
     token_texts = "".join(d for e, d in events if e == "token")
-    assert "蚝油" not in token_texts
-    assert token_texts  # 诚实的兜底提示，不是彻底的空气泡
+    assert "蚝油" in token_texts
+    assert "安全提示" in token_texts
+    assert token_texts.index("蚝油") < token_texts.index("安全提示")
     assert any(e == "guardrail" and "verification_rejected" in d for e, d in events)
     assert any(e == "guardrail" and '"check_number": 4' in d for e, d in events)
     assert event_types[-1] == "done"
