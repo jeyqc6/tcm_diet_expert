@@ -150,12 +150,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    # NEXT_PUBLIC_API_BASE_URL 特意不在这里传——Next.js 的 NEXT_PUBLIC_* 变量
-    # 是构建期烧进客户端 JS 里的，不是运行时读的，这里传了也不生效(需要走
-    # docker build --build-arg 才行)。frontend/src/app/page.tsx 的默认值已经
-    # 是 http://localhost:8123，正好匹配下面 api 服务映射到宿主机的端口——
-    # 浏览器本身跑在宿主机上，访问的是宿主机的 8123/3000，不是容器内部地址，
-    # 默认值不用改，不需要额外的构建参数线路。
+      args:
+        # Browser-visible API URL (build-time). Local default localhost:8123;
+        # VPS: set PUBLIC_API_BASE_URL=http://<公网IP>:8123 in .env before build.
+        NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8123}
     ports:
       - "3000:3000"
     depends_on:

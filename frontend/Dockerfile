@@ -2,6 +2,10 @@
 
 FROM node:22-slim AS build
 WORKDIR /app
+# Baked into client JS at build time. Default matches local docker compose;
+# VPS deploy sets PUBLIC_API_BASE_URL in root .env → compose build-arg.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8123
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY package*.json ./
 RUN npm ci
 COPY . .

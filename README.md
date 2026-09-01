@@ -139,7 +139,7 @@ cp .env.local.example .env.local
 npm install && npm run dev
 ```
 
-Full walkthrough, including what changes require a rebuild vs. hot-reload, lives in [`RUN.md`](./RUN.md).
+Full walkthrough, including what changes require a rebuild vs. hot-reload, lives in [`RUN.md`](./RUN.md). **Free VPS deploy (Oracle + docker compose):** [`RUN.md` §4](./RUN.md#4-vps-部署方案-a--免费-oracle-单机).
 
 ### Configuring an LLM provider
 

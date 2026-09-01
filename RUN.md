@@ -275,7 +275,66 @@ docker compose stop postgres
 
 ---
 
-## 4. 测试（可选）
+## 4. VPS 部署（方案 A · 免费 Oracle 单机）
+
+一台公网 VPS 跑完整 `docker compose`，和本地 Docker 路径最接近。推荐 **Oracle Cloud Always Free** ARM（Ampere）：约 4 OCPU / 24 GB RAM，够跑 torch + BGE-M3。
+
+### 4.1 Oracle 控制台（一次性）
+
+1. 注册 [Oracle Cloud Free Tier](https://www.oracle.com/cloud/free/)
+2. 创建 **Compute → Instance**
+   - Shape：**VM.Standard.A1.Flex**（ARM），至少 **2 OCPU + 8 GB RAM**（建议 4 OCPU + 12 GB+）
+   - Image：**Ubuntu 22.04** 或 24.04
+   - 上传 SSH 公钥
+3. **Networking → Virtual Cloud Network → Security List → Ingress Rules** 放行：
+
+   | 端口 | 用途 |
+   |------|------|
+   | 22 | SSH |
+   | 3000 | 前端 |
+   | 8123 | API |
+
+4. SSH 登录：`ssh ubuntu@<公网IP>`（用户名可能是 `ubuntu` 或 `opc`，看镜像说明）
+
+### 4.2 服务器上一键部署
+
+```bash
+git clone https://github.com/jeyqc6/tcm_diet_expert.git
+cd tcm_diet_expert
+cp .env.example .env
+nano .env    # 至少配好 LLM（OpenRouter 免费档等），保存
+
+chmod +x scripts/vps_deploy.sh
+./scripts/vps_deploy.sh
+```
+
+脚本会：装 Docker（若无）→ 检测公网 IP 写入 `PUBLIC_API_BASE_URL` → `docker compose up --build` → 从 Release 导入知识库。
+
+浏览器打开：**http://\<公网IP\>:3000**
+
+⚠️ **必须设 `PUBLIC_API_BASE_URL`**：远程用户浏览器不能访问 `localhost:8123`。`vps_deploy.sh` 会自动写；改 IP 后需 `docker compose up --build -d frontend api`。
+
+### 4.3 验证
+
+```bash
+curl -s http://<公网IP>:8123/healthz
+docker compose exec -T postgres psql -U diet_expert -d diet_expert -c "SELECT count(*) FROM knowledge_chunks;"
+```
+
+网页问「红枣是什么性味？」——有 `source` 引用即正常。
+
+### 4.4 常见问题
+
+| 现象 | 处理 |
+|------|------|
+| 前端能开，聊天报网络错 | `.env` 里 `PUBLIC_API_BASE_URL` 不对或未 `--build` 前端 |
+| `docker compose build` 很慢 | 首次装 torch + 下 BGE 权重，正常 |
+| 内存不足 OOM | Oracle shape 加大 RAM，或 swap：`sudo fallocate -l 4G /swapfile && ...` |
+| 只有 HTTP | 正式环境可加 Nginx + Let's Encrypt（进阶，非必需） |
+
+---
+
+## 5. 测试（可选）
 
 `pytest` / `httpx` 已在 `requirements.txt` 里（第 2.2 步 `pip install -r requirements.txt` 已装好），不用单独再装：
 
