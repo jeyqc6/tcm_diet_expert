@@ -1,14 +1,19 @@
 """
 测试目标：backend/agents/dispatch.py `_compose_task_input()` —— D27 补充
 (backend/memory/session_store.py 接线)把会话历史接进 SubAgent task_input
-的组装逻辑。
+的组装逻辑；`_stage_event()`(2026-09-01 新增，过程可见性的 `stage` SSE 事件)。
 对应实现：backend/agents/dispatch.py
 """
 from __future__ import annotations
 
 import asyncio
+import json
 
-from backend.agents.dispatch import _compose_task_input, _should_retry_insufficient_evidence
+from backend.agents.dispatch import (
+    _compose_task_input,
+    _should_retry_insufficient_evidence,
+    _stage_event,
+)
 from backend.agents.dispatch import _stream_verification_result
 from backend.agents.verification import RejectedItem, SuggestionItem, VerificationResult
 
@@ -126,3 +131,37 @@ def test_allergen_rejection_emits_safe_fallback_message():
     assert rendered.index("不安全的原始建议") < rendered.index("安全提示")
     assert '"event": "done"' not in rendered
     assert "event: done" in rendered
+
+
+# ---------------------------------------------------------------------------
+# `_stage_event()`：过程可见性的 `stage` SSE 事件(2026-09-01 新增)
+# ---------------------------------------------------------------------------
+
+
+def test_stage_event_has_stable_schema():
+    """schema 是 {stage, status, detail}——前端 applyEvent() 靠这三个字段渲染
+    进度条，字段名/形状变了前端也要跟着改，这里锁住不被意外改动。"""
+    raw = _stage_event("verify", "start", "zh")
+    assert raw.startswith("event: stage\n")
+    payload = json.loads(raw.split("data: ", 1)[1].strip())
+    assert payload == {"stage": "verify", "status": "start", "detail": "核查"}
+
+
+def test_stage_event_localizes_via_i18n_not_hardcoded():
+    """detail 走 backend/i18n.py 的 t()——zh/en 两侧文案不同，且都不是硬编码
+    在 dispatch.py 里拼出来的。"""
+    zh = json.loads(_stage_event("subagent_tcm", "done", "zh").split("data: ", 1)[1].strip())
+    en = json.loads(_stage_event("subagent_tcm", "done", "en").split("data: ", 1)[1].strip())
+    assert zh["detail"] == "中医侧分析"
+    assert en["detail"] == "TCM-side analysis"
+    assert zh["status"] == en["status"] == "done"
+
+
+def test_stage_event_status_reflected_verbatim():
+    """start/done 复用同一条 detail 文案(见 backend/i18n.py 对应 key 上方注释)，
+    前端靠 status 字段本身区分，不是靠两套不同的文案。"""
+    start = json.loads(_stage_event("reconcile", "start", "zh").split("data: ", 1)[1].strip())
+    done = json.loads(_stage_event("reconcile", "done", "zh").split("data: ", 1)[1].strip())
+    assert start["detail"] == done["detail"] == "两侧结论调和"
+    assert start["status"] == "start"
+    assert done["status"] == "done"

@@ -59,6 +59,13 @@ type UserInfo = { user_id: string; name: string };
 
 type Guardrail = { type: string; detail?: string; reason?: string };
 
+// `stage` SSE 事件(2026-08-31 新增，backend/agents/dispatch.py `_stage_event()`)
+// ——路由/派发/调和/核查这几个原本对用户完全不可见的中间阶段，现在按
+// stage 事件到达的顺序累积成一条"进度面包屑"。`done` 只标记"这个阶段完成"，
+// 不代表整轮对话结束(那是既有的 `done` 事件)，两者名字撞了但含义不同层级，
+// 不合并处理。
+type StageItem = { stage: string; detail: string; done: boolean };
+
 type PendingFact = {
   pending_id: string;
   allergens: string[];
@@ -75,6 +82,7 @@ type ChatTurn = {
   archivedSummary?: boolean; // 历史摘要提示气泡（Tier2/3，原文已不在库里），不是真实一轮问答
   clarification?: boolean;
   taskLabel?: string;
+  stages: StageItem[];
 };
 
 type SessionMessage = {
@@ -219,11 +227,12 @@ function messagesToTurns(rows: SessionMessage[], archivedPrefix: string): ChatTu
         guardrails: m.triggered_guardrails.map((type) => ({ type })),
         done: true,
         archivedSummary: true,
+        stages: [],
       });
       continue;
     }
     if (m.user_text) {
-      turns.push({ role: "user", text: m.user_text, sources: [], guardrails: [], done: true });
+      turns.push({ role: "user", text: m.user_text, sources: [], guardrails: [], done: true, stages: [] });
     }
     turns.push({
       role: "assistant",
@@ -231,6 +240,7 @@ function messagesToTurns(rows: SessionMessage[], archivedPrefix: string): ChatTu
       sources: m.cited_source_ids,
       guardrails: m.triggered_guardrails.map((type) => ({ type })),
       done: true,
+      stages: [],
     });
   }
   return turns;
@@ -401,8 +411,8 @@ export default function Home() {
 
     setTurns((prev) => [
       ...prev,
-      { role: "user", text: message, sources: [], guardrails: [], done: true },
-      { role: "assistant", text: "", sources: [], guardrails: [], done: false },
+      { role: "user", text: message, sources: [], guardrails: [], done: true, stages: [] },
+      { role: "assistant", text: "", sources: [], guardrails: [], done: false, stages: [] },
     ]);
 
     try {
@@ -516,6 +526,20 @@ export default function Home() {
           ...last,
           clarification: true,
         };
+      } else if (event === "stage") {
+        const stage = String(data.stage ?? "");
+        const detail = String(data.detail ?? stage);
+        const status = String(data.status ?? "done");
+        if (stage) {
+          const existingIndex = last.stages.findIndex((s) => s.stage === stage);
+          const nextStages = [...last.stages];
+          if (existingIndex === -1) {
+            nextStages.push({ stage, detail, done: status === "done" });
+          } else {
+            nextStages[existingIndex] = { ...nextStages[existingIndex], detail, done: status === "done" };
+          }
+          updated = { ...last, stages: nextStages };
+        }
       } else if (event === "task") {
         const index = Number(data.index ?? 0) + 1;
         const total = Number(data.total ?? 1);
@@ -777,6 +801,22 @@ export default function Home() {
             >
               {turn.taskLabel && (
                 <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>{turn.taskLabel}</div>
+              )}
+              {turn.role === "assistant" && !turn.done && turn.stages.length > 0 && (
+                // 只在这一轮还没完全结束时展示——`done`(整轮结束)之后没必要
+                // 继续占地方显示"路由已确定 → 核查"这类过程性信息，最终答案
+                // 本身才是用户关心的。当前活跃的那一步(还没收到 done 的最后
+                // 一条)加粗；已完成的用 ✓ 前缀、颜色变浅。
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {turn.stages.map((s, si) => (
+                    <span key={s.stage} style={{ color: s.done ? "#999" : "#0070f3", fontWeight: s.done ? 400 : 600 }}>
+                      {s.done ? "✓ " : ""}
+                      {s.detail}
+                      {!s.done ? copy.stageActiveSuffix : ""}
+                      {si < turn.stages.length - 1 ? " ›" : ""}
+                    </span>
+                  ))}
+                </div>
               )}
               {turn.clarification && (
                 <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>{copy.clarificationBanner}</div>

@@ -61,6 +61,23 @@ logger = logging.getLogger("diet_expert.agents.dispatch")
 ConflictRulesFetcher = Callable[[list, list], list]
 
 # ---------------------------------------------------------------------------
+# 2026-09-01：过程可见性(process visibility)——路由/派发/调和/核查全部跑完
+# 才第一次 yield token/source/done，用户在这之前(有时是两个并行 LLM 调用 +
+# 一次调和 + 一次核查)完全看不到任何反馈。`stage` 是新增的第五类 SSE 事件，
+# 只携带"现在在跑哪个阶段"，不携带任何生成文本——`_stage_event()`在
+# `status="start"`时核查/调和结果显然还没算出来，但反正这里从不传生成内容，
+# 不会碰到模块文档开头那条"核查必须在第一条 token 事件前完成"的约束。
+# 复用同一条 detail 文案给 start/done 两种状态，前端靠 `status` 字段区分，
+# 不需要为每个阶段各配一句"开始"和一句"完成"。
+# ---------------------------------------------------------------------------
+
+
+def _stage_event(stage: str, status: str, locale: str) -> str:
+    return sse_event(
+        "stage", {"stage": stage, "status": status, "detail": t(f"dispatch.stage_{stage}", locale)}
+    )
+
+# ---------------------------------------------------------------------------
 # 人在环追问(D20 五处 agent 行为点第3条"记录解析追问"，2026-08-27 实现并扩展
 # 覆盖 candidate_eval/single_domain/fact_query/full_recommend 四个走 SubAgent
 # 的分支——完整设计见 docs/ARCHITECTURE.md 新增小节、docs/DECISIONS.md D20
@@ -370,7 +387,12 @@ async def _verify_and_stream(
     """所有分支共用的收尾：核查 → 流式吐出结果。薄封装
     `_run_verification()` + `_stream_verification_result()`——`_stream_dual_dispatch()`
     的过敏原重试路径需要拆开这两步单独调用，其余三个调用方(单领域/事实查询、
-    两侧 SubAgent 部分失败的降级路径)不需要重试，直接用这个组合版本。"""
+    两侧 SubAgent 部分失败的降级路径)不需要重试，直接用这个组合版本。
+
+    2026-09-01：`verify` stage 事件包在这里而不是每个调用方各吐一遍——四个
+    调用方(部分失败降级 ×2、追问强制重试后仍单边成功的降级 ×2)复用的都是
+    这一个函数，包一次就覆盖全部四处。"""
+    yield _stage_event("verify", "start", locale)
     verification = await _run_verification(
         subagent_results, final_text, branch_mode, complete,
         user_profile_summary=user_profile_summary, user_allergens=user_allergens,
@@ -379,6 +401,7 @@ async def _verify_and_stream(
     verification = await _repair_after_verification(
         verification, final_text, subagent_results, complete, locale=locale
     )
+    yield _stage_event("verify", "done", locale)
     async for chunk in _stream_verification_result(verification, trace_id, locale=locale):
         yield chunk
 
@@ -499,6 +522,8 @@ async def _stream_single_domain(
     extra_notes = _profile_notes(profile)
     locale = request.locale
     task_input = _compose_task_input(request.message, session_history)
+    subagent_stage = f"subagent_{domain}"
+    yield _stage_event(subagent_stage, "start", locale)
     try:
         result = await _run_single_subagent(
             domain, task_input, server, complete,
@@ -516,6 +541,9 @@ async def _stream_single_domain(
         yield sse_event("done", {"trace_id": trace_id})
         return
 
+    # 强制重试(追问一次仍不够信息时的 `_FORCE_ANSWER_NOTE` 那一轮)算同一次
+    # SubAgent 调度的延续，不单独再吐一组 start/done——done 放在这两步都完成
+    # 之后，对前端来说"这一侧分析"就是一个不可再分的阶段。
     result = await _resolve_unresolved_clarification(
         result,
         task_input,
@@ -526,6 +554,7 @@ async def _stream_single_domain(
             user_id=request.user_id, locale=locale,
         ),
     )
+    yield _stage_event(subagent_stage, "done", locale)
     clarification_events = _clarification_events_for(
         result.final_text,
         decision_branch=decision.branch,
@@ -544,6 +573,7 @@ async def _stream_single_domain(
         "fact_query" if decision.branch is RouteBranch.FACT_QUERY else "single_domain"
     )
     summary = profile.to_verification_summary() if profile else ""
+    yield _stage_event("verify", "start", locale)
     verification = await _run_verification(
         [result], result.final_text, branch_mode, complete,
         user_profile_summary=summary, user_allergens=allergens, locale=locale,
@@ -551,6 +581,7 @@ async def _stream_single_domain(
     verification = await _repair_after_verification(
         verification, result.final_text, [result], complete, locale=locale
     )
+    yield _stage_event("verify", "done", locale)
     async for chunk in _stream_verification_result(verification, trace_id, locale=locale):
         yield chunk
 
@@ -584,6 +615,14 @@ async def _stream_dual_dispatch(
     tokens_before = cost_before.total_tokens if cost_before else 0
     cost_est_before = cost_before.cost_est if cost_before else None
     t0 = time.perf_counter()
+    # 2026-09-01：两侧 start 事件在 `asyncio.gather` 派发前一次性吐出——两侧
+    # 确实是同时开始跑的，这条事件如实反映。done 事件在 gather 返回之后一次性
+    # 吐出，不是各自真正完成的那一刻(`gather` 本身就是"等两个都结束"，想要
+    # 两侧各自独立的完成时间需要换成 `asyncio.as_completed`，是一次不必要的
+    # 改动——两侧 SubAgent 循环本来就跑得差不多快，拆分带来的体验提升有限，
+    # 不值得为了这条进度指示改变派发方式本身)。
+    yield _stage_event("subagent_tcm", "start", locale)
+    yield _stage_event("subagent_nutrition", "start", locale)
     tcm_result, nutrition_result = await _gather_dual_subagents(
         task_input,
         server,
@@ -596,6 +635,8 @@ async def _stream_dual_dispatch(
         locale=locale,
     )
     reraise_if_cancelled(tcm_result, nutrition_result)
+    yield _stage_event("subagent_tcm", "done", locale)
+    yield _stage_event("subagent_nutrition", "done", locale)
     wall_ms = (time.perf_counter() - t0) * 1000.0
     cost_after = current_request_cost()
     tokens_delta = None
@@ -779,6 +820,7 @@ async def _stream_dual_dispatch(
         user_profile=profile.to_reconciliation_dict() if profile else None,
         matched_rules=matched_rules,
     )
+    yield _stage_event("reconcile", "start", locale)
     reconciled = await reconcile_subagent_results(**reconciliation_kwargs, complete=complete, locale=locale)
     branch_mode: BranchMode = (
         "candidate_eval" if decision.branch is RouteBranch.CANDIDATE_EVAL else "full_recommend"
@@ -812,6 +854,12 @@ async def _stream_dual_dispatch(
         allergen_retried = True
         retries_left -= 1
 
+    # 调和层的过敏原重试(上面的 while 循环)算在 reconcile 阶段之内一起收尾——
+    # 对用户来说这仍然是"两侧结论调和"这一件事，不是调和完了又单独一个
+    # "重试"阶段。
+    yield _stage_event("reconcile", "done", locale)
+
+    yield _stage_event("verify", "start", locale)
     verification = await _run_verification(
         [tcm_result, nutrition_result], reconciled.text, branch_mode, complete,
         user_profile_summary=summary, user_allergens=allergens,
@@ -825,6 +873,7 @@ async def _stream_dual_dispatch(
         complete,
         locale=locale,
     )
+    yield _stage_event("verify", "done", locale)
     async for chunk in _stream_verification_result(verification, trace_id, locale=locale):
         yield chunk
 
@@ -895,7 +944,14 @@ async def dispatch_branch(
     `session_history`：`backend/memory/session_store.py` `load_session_history()`
     组装出的会话历史文本，默认空字符串(不接线的既有调用点/单测都不用改)。
     会派发 SubAgent 的四条分支，以及 `other`(2026-08-31 补，见下)都会用到，
-    见 `_compose_task_input()`。"""
+    见 `_compose_task_input()`。
+
+    2026-09-01：`stage`("routing", status="done")事件在这里*不*发——这个
+    函数拿到的 `decision` 早就是路由已经决定之后的结果，"路由已确定"这条
+    进度对调用方(api/main.py `_stream_chat_inner`)来说才是"刚刚发生"的事，
+    放在那边（拿到 `decision`/`tasks` 之后、调用这个函数之前）语义上更准确，
+    也只需要吐一次，不用在 `dispatch_branch`/`stream_multi_task` 每个分支
+    里各吐一遍。"""
     if decision.branch is RouteBranch.OTHER:
         # 2026-08-31：`other` 此前完全不接 session_history，是"纯寒暄/无关问题
         # 不需要上下文"这条设计假设的直接推论——但路由器(尤其是 LLM 兜底那一步)

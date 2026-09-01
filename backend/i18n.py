@@ -164,6 +164,17 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "模型通用知识，未经过当前知识库核验，可能不完全准确。"
         ),
         "dispatch.rejected_item": "建议未通过核查，已移除（检查项 {check_number}）",
+        # 2026-09-01：过程可见性——`stage` SSE 事件的文案(backend/agents/sse.py
+        # 没有"模型级流式"，这几条 detail 是在派发/调和/核查真正跑的时候即时
+        # 吐出来的，填补"路由完成到第一条 token 之间用户干等"的空白，见
+        # backend/agents/dispatch.py `_stage_event()`。同一条文案在 start/done
+        # 两种状态下复用，前端靠事件里的 `status` 字段区分，不需要"开始中/已
+        # 完成"两套措辞。
+        "dispatch.stage_routing": "已确定处理方式",
+        "dispatch.stage_subagent_tcm": "中医侧分析",
+        "dispatch.stage_subagent_nutrition": "营养学侧分析",
+        "dispatch.stage_reconcile": "两侧结论调和",
+        "dispatch.stage_verify": "核查",
         "log_write.decompose_failed": "菜品拆解失败，请重试",
         "log_write.not_recognized": "还是没能识别出具体的食物，这次先不记录了",
         "log_write.clarification": "没能识别出具体吃了什么，能再具体说一下吗？比如吃了什么菜、喝了什么？",
@@ -270,6 +281,11 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "and may be inaccurate."
         ),
         "dispatch.rejected_item": "A suggestion was removed during verification (check {check_number}).",
+        "dispatch.stage_routing": "Routing decided",
+        "dispatch.stage_subagent_tcm": "TCM-side analysis",
+        "dispatch.stage_subagent_nutrition": "Nutrition-side analysis",
+        "dispatch.stage_reconcile": "Reconciling both sides",
+        "dispatch.stage_verify": "Verifying",
         "log_write.decompose_failed": "Could not parse the dish; please try again",
         "log_write.not_recognized": "Still could not recognize a specific food, so this was not logged",
         "log_write.clarification": (

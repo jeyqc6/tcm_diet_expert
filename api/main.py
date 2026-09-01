@@ -793,6 +793,18 @@ async def _stream_chat_inner(
             domain_hint=pending.domain_hint,
             rule_matched=True,
         )
+        # 2026-09-01：追问重试轮的分支其实早就定了(上一轮触发追问时)，这里
+        # 仍然吐一条 routing stage 事件——前端的"处理阶段"指示条不该因为走的
+        # 是重试路径就少一截，用户体感上这仍然是"这一轮请求"的第一步。
+        yield sse_event(
+            "stage",
+            {
+                "stage": "routing",
+                "status": "done",
+                "detail": t("dispatch.stage_routing", request.locale),
+                "branch": pending.branch.value,
+            },
+        )
         async for chunk in _dispatch_and_record(
             dispatch_branch(
                 request.model_copy(update={"message": combined_message}),
@@ -826,6 +838,22 @@ async def _stream_chat_inner(
         trace_id, request.session_id, len(tasks), outcome["branches"],
     )
     stage_log(logger, "chat", task_count=len(tasks), branches=outcome["branches"], session_id=request.session_id)
+
+    # 2026-09-01：路由已确定——这是"过程可见性"这条新增能力(见
+    # backend/agents/dispatch.py `_stage_event()`)里唯一一个不属于
+    # `dispatch_branch()`/`stream_multi_task()` 内部、必须在这里吐的事件：
+    # 路由判断本身就是在这两个函数被调用*之前*做完的。多任务场景下
+    # `branch` 字段复用下面 `branch_fallback` 同款的 "+".join(...) 记法，
+    # 单任务原样给分支名，不为了这一条 stage 事件专门发明第二套多分支表示法。
+    yield sse_event(
+        "stage",
+        {
+            "stage": "routing",
+            "status": "done",
+            "detail": t("dispatch.stage_routing", request.locale),
+            "branch": outcome["branch"] if outcome["branch"] is not None else "+".join(outcome["branches"]),
+        },
+    )
 
     # Profile already loaded above for the onboarding check. log_review is the
     # only branch that does not use it.
