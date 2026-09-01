@@ -155,9 +155,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "或者补充更具体的信息，我再试一次。"
         ),
         "dispatch.allergen_fallback": (
-            "安全提示：上面的建议涉及你标记的过敏原（{allergens}）或其潜在来源，"
-            "关键词命中也可能只是为了说明需要避免的成分。请查看具体产品的配料表和"
-            "过敏原标识，再自行判断是否适合食用；如果成分不明或无法确认，请先不要尝试，"
+            "安全提示：生成的建议可能涉及你标记的过敏原（{allergens}）或其潜在来源。"
+            "为安全起见，本次未展示该建议原文。请查看具体产品的配料表和过敏原标识，"
+            "再自行判断是否适合食用；如果成分不明或无法确认，请先不要尝试，"
             "必要时咨询医生或过敏专科人员。"
         ),
         "dispatch.unknown_allergen": "相关过敏原",
@@ -258,9 +258,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "Try asking another way or add more detail, and I will try again."
         ),
         "dispatch.allergen_fallback": (
-            "Safety notice: the recommendation above involved an allergen you marked "
-            "({allergens}) or a possible hidden source. A keyword hit may also be a "
-            "warning about an ingredient to avoid. Check the product's ingredient list "
+            "Safety notice: the generated recommendation may involve an allergen you marked "
+            "({allergens}) or a possible hidden source. For safety, the original wording "
+            "is not shown. Check the product's ingredient list "
             "and allergen statement, then decide whether it is suitable for you. If the "
             "ingredients are unclear, do not try it until you can confirm them; consult "
             "a clinician or allergy specialist if needed."

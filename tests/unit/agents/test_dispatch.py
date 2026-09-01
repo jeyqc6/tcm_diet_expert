@@ -121,7 +121,7 @@ def test_allergen_rejection_emits_safe_fallback_message():
     rendered = "".join(events)
     assert "安全提示" in rendered
     assert "虾" in rendered
-    assert "不安全的原始建议" in rendered
-    assert rendered.index("不安全的原始建议") < rendered.index("安全提示")
+    assert "不安全的原始建议" not in rendered
+    assert "蚝油" not in rendered
     assert '"event": "done"' not in rendered
     assert "event: done" in rendered
