@@ -75,7 +75,7 @@ def require_pg():
         print("需要 psycopg2：pip install psycopg2-binary", file=sys.stderr)
         sys.exit(1)
     if register_vector is None or SparseVector is None:
-        print("需要 pgvector(>=0.7,支持 sparsevec)：pip install -U pgvector", file=sys.stderr)
+        print("需要 pgvector Python 包(>=0.5,支持 sparsevec)：pip install -U pgvector", file=sys.stderr)
         sys.exit(1)
 
 

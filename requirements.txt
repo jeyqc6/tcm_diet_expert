@@ -17,9 +17,9 @@ python-dotenv
 FlagEmbedding       # BGE-M3 dense embedding 模型
 torch               # FlagEmbedding 的底层依赖
 psycopg2-binary     # 连 Postgres
-pgvector>=0.7.0     # Postgres 里的 vector 类型 <-> numpy 互转；>=0.7.0 才有
-                    # sparsevec 类型(混合检索用，2026-08-30)，同时要求
-                    # Postgres 端 pgvector 扩展本身也 >=0.7.0(本机装的是 0.8.1)
+pgvector>=0.5.0     # Python 包：vector/sparsevec <-> numpy 互转；SparseVector 从 0.5.0 起有
+                    # （PyPI 上目前最高 0.5.0，别和 Postgres 扩展版本号混了）
+                    # Postgres 端扩展也需支持 sparsevec（docker-compose 用 pgvector/pgvector:pg16）
 numpy
 
 # ---- Step1 naive RAG 原型 / 评测（planning/step1-naive-rag/）----
