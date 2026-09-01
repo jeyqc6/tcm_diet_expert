@@ -123,7 +123,27 @@ docker compose down          # 停容器，不删数据
 
 ### 1.2 灌知识库（检索要用）
 
-知识源是 `knowledge/_processed/*.jsonl`。`knowledge/` 在 `.gitignore` 里，干净 clone 没有这份数据，ingest 会诚实失败。
+干净 clone **没有** `knowledge/` 源文件，也没有 `knowledge_chunks` 向量表。不灌库时 `/healthz` 仍 200，但带引用的检索问答会被核查拦住。
+
+#### 推荐：GitHub Release 快照（~30 秒）
+
+维护者在 [Releases · v0.1.0-kb](https://github.com/jeyqc6/tcm_diet_expert/releases/tag/v0.1.0-kb) 挂了预生成的 `knowledge_chunks.sql.gz`（约 **34 MB** 压缩 / **5,837** 条 BGE-M3 向量，不进 git）。
+
+```bash
+docker compose up -d postgres   # 等 healthy
+chmod +x scripts/import_knowledge_chunks.sh
+./scripts/import_knowledge_chunks.sh
+```
+
+脚本会下载到 `data/knowledge_chunks.sql.gz`（已在 `.gitignore`），再导入容器 Postgres。也可手动指定本地文件：
+
+```bash
+./scripts/import_knowledge_chunks.sh ~/Downloads/knowledge_chunks.sql.gz
+```
+
+维护者更新快照：`./scripts/publish_knowledge_release.sh`（需 `brew install gh && gh auth login`）。
+
+#### 备选 A：从本机已有库拷贝
 
 本机已有同结构的 `knowledge_chunks` 时，拷进容器最快（compose 把 Postgres 映到宿主机 **5433**，避开本机常见的 5432）：
 
@@ -132,13 +152,15 @@ pg_dump -d diet_expert -t knowledge_chunks --data-only --no-owner \
   | docker exec -i diet_expert-postgres-1 psql -U diet_expert -d diet_expert
 ```
 
-没有现成库、要在容器里重新嵌入（CPU，5837 条是**小时级**，不是 <10 分钟那条指标——那条默认宿主机 MPS/GPU）：
+#### 备选 B：在容器里重新嵌入（CPU，5837 条是**小时级**）
+
+没有现成库、要在容器里重新嵌入（需要 `knowledge/_processed/*.jsonl`，干净 clone 默认没有）：
 
 ```bash
 docker compose --profile ingest up ingest
 ```
 
-或在宿主机对着容器库嵌入（发布端口 5433）：
+#### 备选 C：在宿主机对着容器库嵌入（发布端口 5433）
 
 ```bash
 DIET_EXPERT_PG_DSN=postgresql://diet_expert:diet_expert@127.0.0.1:5433/diet_expert \
@@ -255,8 +277,9 @@ docker compose stop postgres
 
 ## 4. 测试（可选）
 
+`pytest` / `httpx` 已在 `requirements.txt` 里（第 2.2 步 `pip install -r requirements.txt` 已装好），不用单独再装：
+
 ```bash
-pip install pytest httpx
 pytest tests/unit -q
 pytest tests/integration/test_api_chat_sse.py -q
 ```

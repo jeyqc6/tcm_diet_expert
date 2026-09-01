@@ -47,6 +47,7 @@ build/
 *.egg-info/
 
 # --- 本地数据库 / 模型缓存（体积大，各环境自行生成）---
+data/
 *.npz
 .huggingface/
 .cache/
