@@ -43,6 +43,32 @@ def test_anthropic_base_url_is_overridable(monkeypatch):
     assert str(provider._client.base_url) == "https://api.minimax.io/anthropic/"
 
 
+def test_deepseek_defaults_to_deepseek_anthropic_base_url(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-x")
+    monkeypatch.delenv("DEEPSEEK_BASE_URL", raising=False)
+    provider = build_provider("deepseek", timeout_s=1)
+    assert isinstance(provider, AnthropicProvider)
+    assert str(provider._client.base_url) == "https://api.deepseek.com/anthropic/"
+
+
+def test_deepseek_falls_back_to_anthropic_api_key(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-fallback")
+    provider = build_provider("deepseek", timeout_s=1)
+    assert isinstance(provider, AnthropicProvider)
+
+
+def test_deepseek_base_url_is_overridable(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-x")
+    monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://example.invalid/anthropic")
+    provider = build_provider("deepseek", timeout_s=1)
+    assert str(provider._client.base_url) == "https://example.invalid/anthropic/"
+
+
+def test_deepseek_is_listed_as_supported():
+    assert "deepseek" in SUPPORTED_PROVIDERS
+
+
 def test_openrouter_defaults_to_openrouter_base_url(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-x")
     monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)

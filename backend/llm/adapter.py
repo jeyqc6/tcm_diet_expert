@@ -86,6 +86,8 @@ _DEFAULT_MODELS.update(
         ("openai", ModelTier.PROD): "gpt-4o",
         ("anthropic", ModelTier.DEV): "claude-haiku-4-5-20251001",
         ("anthropic", ModelTier.PROD): "claude-sonnet-5",
+        ("deepseek", ModelTier.DEV): "deepseek-v4-flash",
+        ("deepseek", ModelTier.PROD): "deepseek-v4-flash",
     }
 )
 

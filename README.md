@@ -158,6 +158,22 @@ pip install pytest httpx
 pytest tests/          # unit + integration; LLM calls are mocked/replayed, no tokens burned, no API key needed
 ```
 
+## Try it
+
+Once it's running, each of these hits a different branch of the pipeline above — worth trying a few back to back to see the routing actually change behavior, not just the wording of the answer:
+
+| Try asking | What happens |
+|---|---|
+| "What should I eat tonight?" | **Full recommendation** — both SubAgents run in parallel, get reconciled against the conflict-rule table, and stream back as one grounded answer with citations |
+| "The restaurant downstairs has mapo tofu and rice noodles — which one should I pick?" | **Candidate evaluation** — judges the given options instead of generating a plan from scratch |
+| "What is the TCM nature of ginger?" | **Fact lookup** — one SubAgent, one retrieval call, no reconciliation needed |
+| "What should someone with qi deficiency eat?" | **Single-domain** — routed to the TCM SubAgent only; nutrition isn't consulted at all |
+| "I had two eggs and toast for breakfast, log it" | **Deterministic write** — dish/ingredient decomposition, no generation |
+| "What did I eat yesterday?" | **Deterministic query** against the diet log — zero LLM calls |
+| "By the way, I'm allergic to shrimp" | **Critical-fact scan** fires mid-conversation — sits in a pending-confirmation queue instead of silently rewriting your profile |
+
+Works in Chinese too (the router and both knowledge bases are bilingual) — e.g. "今天该吃什么" / "我对虾过敏".
+
 ## Repository layout
 
 ```

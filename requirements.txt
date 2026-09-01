@@ -41,6 +41,9 @@ sse-starlette       # 目前 api/main.py 用的是手写 SSE(纯字符串拼 "ev
                     # 后续要换成官方 EventSourceResponse 时不用再补依赖
 httpx               # fastapi.testclient.TestClient 需要，tests/integration/test_api_chat_sse.py 用
 
+# ---- 测试（tests/ + .github/workflows/ci.yml）----
+pytest
+
 # ---- 可观测（ENGINEERING §6，阶段 6 Langfuse 全链路）----
 # 包要装。没配 LANGFUSE_PUBLIC_KEY/SECRET_KEY 时 SDK 是 no-op，聊天照跑；
 # 配了 key 但没装这个包，会打 warning 然后整段 tracing 关掉（本机刚踩过）。

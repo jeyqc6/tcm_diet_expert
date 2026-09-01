@@ -13,7 +13,9 @@ from backend.env import load_env
 from backend.llm.providers.anthropic_provider import AnthropicProvider
 from backend.llm.providers.openai_compatible import OpenAICompatibleProvider
 
-SUPPORTED_PROVIDERS = ("openai", "anthropic", "ollama", "openrouter")
+SUPPORTED_PROVIDERS = ("openai", "anthropic", "deepseek", "ollama", "openrouter")
+
+_DEEPSEEK_ANTHROPIC_BASE_URL = "https://api.deepseek.com/anthropic"
 
 
 def build_provider(name: str, *, timeout_s: float):
@@ -36,6 +38,14 @@ def build_provider(name: str, *, timeout_s: float):
         return AnthropicProvider(
             api_key=os.environ.get("ANTHROPIC_API_KEY"),
             base_url=os.environ.get("ANTHROPIC_BASE_URL"),
+            timeout_s=timeout_s,
+        )
+    if name == "deepseek":
+        # DeepSeek exposes an Anthropic-compatible Messages API — reuse the same
+        # provider implementation; only base_url / api_key / model name differ.
+        return AnthropicProvider(
+            api_key=os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"),
+            base_url=os.environ.get("DEEPSEEK_BASE_URL", _DEEPSEEK_ANTHROPIC_BASE_URL),
             timeout_s=timeout_s,
         )
     if name == "openrouter":

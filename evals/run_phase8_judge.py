@@ -195,6 +195,16 @@ async def main_async(args) -> dict:
     conflict_rules = load_jsonl(root / "evals" / "conflict_rules.jsonl")
 
     os.environ.setdefault("MODEL_TIER", "dev")
+    # `load_env()` only overlays `.env` onto os.environ once per process (see
+    # backend/env.py); it's a no-op on every later call. Must run BEFORE the
+    # CLI override below — otherwise the *first* load_env() call happens
+    # inside _provider_name_for_tier()/_model_for_tier() further down, and it
+    # unconditionally overlays LLM_PROVIDER_PROD/LLM_MODEL_PROD from the file,
+    # silently clobbering --judge-provider/--judge-model back to whatever
+    # .env's LLM_PROVIDER_PROD says (e.g. "deepseek").
+    from backend.env import load_env
+
+    load_env()
     if args.judge_provider or args.judge_model:
         if args.judge_provider:
             os.environ["LLM_PROVIDER_PROD"] = args.judge_provider
