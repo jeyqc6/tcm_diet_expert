@@ -192,7 +192,7 @@ def test_log_write_unrecognized_text_asks_for_clarification_first():
 
     resp = client.post("/api/chat", json={"session_id": "s1", "message": "记录一下，刚才随便吃了点东西"})
 
-    events = _parse_sse(resp.text)
+    events = [ev for ev in _parse_sse(resp.text) if ev[0] != "stage"]  # stage 事件是新增的进度指示，不是这条断言关心的内容
     assert events[0] == ("clarification", '{"question": "没能识别出具体吃了什么，能再具体说一下吗？比如吃了什么菜、喝了什么？"}')
     assert any(e == "token" for e, _ in events)  # 追问文本也按 token 事件吐出，兼容老前端
     assert not any(e == "guardrail" for e, _ in events)
@@ -216,7 +216,8 @@ def test_log_write_clarification_retry_still_unrecognized_yields_guardrail():
     client = _client_with(_server_with_handlers(write_memory=fake_write_memory), complete)
 
     resp1 = client.post("/api/chat", json={"session_id": "s1", "message": "记录一下，刚才随便吃了点东西"})
-    assert _parse_sse(resp1.text)[0][0] == "clarification"
+    events1 = [ev for ev in _parse_sse(resp1.text) if ev[0] != "stage"]  # stage 事件是新增的进度指示，不是这条断言关心的内容
+    assert events1[0][0] == "clarification"
 
     resp2 = client.post("/api/chat", json={"session_id": "s1", "message": "不记得了"})
     events2 = _parse_sse(resp2.text)
@@ -277,7 +278,7 @@ def test_candidate_eval_clarification_round_trip_then_evaluates():
     client = _client_with(server, complete)
 
     resp1 = client.post("/api/chat", json={"session_id": "s1", "message": "这个能不能吃"})
-    events1 = _parse_sse(resp1.text)
+    events1 = [ev for ev in _parse_sse(resp1.text) if ev[0] != "stage"]  # stage 事件是新增的进度指示，不是这条断言关心的内容
     assert events1[0][0] == "clarification"
     assert "哪一道菜" in events1[0][1]
 
@@ -374,6 +375,81 @@ def test_fact_query_verifies_before_token_and_emits_source():
     assert "n1" in next(d for e, d in events if e == "source")
     assert event_types[-1] == "done"
     assert complete.call_count == 3  # subagent 2 次 + verify 软判定 1 次
+
+
+def test_fact_query_emits_routing_and_subagent_and_verify_stage_events_in_order():
+    """2026-09-01 新增：过程可见性——单领域路径(fact_query)应该按
+    routing → subagent_nutrition(start/done) → verify(start/done) 的顺序吐出
+    `stage` 事件，且 verify 的 done 必须先于第一条 token(核查必须在第一条
+    token 前完成这条硬约束，`stage` 事件本身不携带生成文本，不违反它)。"""
+    chunk_result = [
+        {"source_id": "n1", "domain": "nutrition", "source_file": "x.md", "source_type": "t",
+         "text": "牛奶含乳糖", "metadata": {}, "score": 0.9}
+    ]
+    server = _server_with_handlers(retrieve_nutrition=lambda **kw: chunk_result)
+    complete = _ScriptedComplete(
+        [
+            _result(tool_calls=[ToolCall(id="c1", name="retrieve_nutrition", arguments={"query": "牛奶乳糖"})]),
+            _result(text="牛奶含有乳糖 [source: n1]"),
+            _accept_soft_check(),
+        ]
+    )
+    client = _client_with(server, complete)
+
+    resp = client.post("/api/chat", json={"session_id": "s1", "message": "牛奶含不含乳糖？"})
+
+    events = _parse_sse(resp.text)
+    stages = [json.loads(d) for e, d in events if e == "stage"]
+    stage_keys = [(s["stage"], s["status"]) for s in stages]
+    assert stage_keys == [
+        ("routing", "done"),
+        ("subagent_nutrition", "start"),
+        ("subagent_nutrition", "done"),
+        ("verify", "start"),
+        ("verify", "done"),
+    ]
+    assert stages[0]["branch"] == "fact_query"
+    assert all(s["detail"] for s in stages)  # 每条都走 i18n，不是空字符串
+
+    event_types = [e for e, _ in events]
+    assert event_types.index("stage") < event_types.index("token")
+    # verify 的 done 必须先于第一条 token —— stage 事件不改变这条硬约束。
+    verify_done_index = next(
+        i for i, (e, d) in enumerate(events)
+        if e == "stage" and json.loads(d) == {"stage": "verify", "status": "done", "detail": "核查"}
+    )
+    first_token_index = event_types.index("token")
+    assert verify_done_index < first_token_index
+
+
+def test_dual_dispatch_emits_subagent_reconcile_verify_stage_events():
+    """双 SubAgent 路径(candidate_eval/full_recommend)应该额外多出
+    subagent_tcm + reconcile 两组 stage 事件，且 reconcile 必须夹在两侧
+    SubAgent 都 done 之后、verify start 之前。"""
+    server = _server_with_handlers(
+        retrieve_tcm=lambda **kw: [{"source_id": "t1", "domain": "tcm", "source_file": "a", "source_type": "t", "text": "阳虚忌生冷", "metadata": {}, "score": 0.8}],
+        retrieve_nutrition=lambda **kw: [{"source_id": "n1", "domain": "nutrition", "source_file": "b", "source_type": "t", "text": "高蛋白食物", "metadata": {}, "score": 0.7}],
+    )
+    complete = _ContentAwareComplete()
+    client = _client_with(server, complete)
+
+    resp = client.post("/api/chat", json={"session_id": "s1", "message": "今天该吃什么"})
+
+    events = _parse_sse(resp.text)
+    stages = [json.loads(d) for e, d in events if e == "stage"]
+    stage_keys = [(s["stage"], s["status"]) for s in stages]
+    assert stage_keys == [
+        ("routing", "done"),
+        ("subagent_tcm", "start"),
+        ("subagent_nutrition", "start"),
+        ("subagent_tcm", "done"),
+        ("subagent_nutrition", "done"),
+        ("reconcile", "start"),
+        ("reconcile", "done"),
+        ("verify", "start"),
+        ("verify", "done"),
+    ]
+    assert stages[0]["branch"] == "full_recommend"
 
 
 def test_session_history_is_forwarded_into_subagent_task_input():
@@ -939,7 +1015,7 @@ def test_unmatched_query_uses_llm_route_not_default_full_recommend():
         "/api/chat",
         json={"session_id": "s1", "message": "totally unmatched utterance xyz"},
     )
-    events = _parse_sse(resp.text)
+    events = [ev for ev in _parse_sse(resp.text) if ev[0] != "stage"]  # stage 事件是新增的进度指示，不是这条断言关心的内容
     assert events[0][0] == "clarification"
     assert complete.call_count == 2
 
