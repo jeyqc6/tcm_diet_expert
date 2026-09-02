@@ -30,9 +30,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
-# reuse BM25 from step1
+# BM25 scorer lives under evals/ (planning/ is gitignored and absent in CI).
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "planning" / "step1-naive-rag"))
+sys.path.insert(0, str(ROOT / "evals"))
 from build_and_eval_bm25 import BM25, hit, load_chunks  # noqa: E402
 
 # docs/EVALUATION.md §4 / PRD §8.3：M1 检索 recall@5 的 Launch 阈值。
