@@ -10,6 +10,8 @@
 清单，里面没有这张表；§4.2 正文把它叫"表"是行文习惯，实际数据资产是
 `knowledge/food/dish-decomposition.jsonl`(44 条种子数据)，本模块直接读这个
 JSONL 到内存字典，不建 DB 表——44-200 条规模，建表反而是过度设计。
+干净 clone 没有 `knowledge/` 时，回退到随仓库分发的
+`backend/memory/seed/dish-decomposition.jsonl`(同一份种子表，供 CI/log_write 使用)。
 
 **三级查找的具体做法(不是按"整句话切成一个个菜名"这种脆弱的分词)**：
 1. **全局表**：把已知的每个菜名当子串，在整句原始输入里扫——"晚上吃了番茄炒蛋
@@ -49,7 +51,10 @@ from backend.env import get_pg_dsn
 from backend.i18n import apply_language_instruction, current_locale
 from backend.llm.adapter import CompleteFn
 
-_DISH_TABLE_PATH = Path(__file__).resolve().parents[2] / "knowledge" / "food" / "dish-decomposition.jsonl"
+_DISH_TABLE_PATHS = (
+    Path(__file__).resolve().parents[2] / "knowledge" / "food" / "dish-decomposition.jsonl",
+    Path(__file__).resolve().parent / "seed" / "dish-decomposition.jsonl",
+)
 
 CONFIDENCE_HIGH = "high"
 CONFIDENCE_LOW = "low"
@@ -105,15 +110,17 @@ class MealDecomposition:
 @lru_cache(maxsize=1)
 def _load_dish_table() -> dict[str, dict[str, Any]]:
     table: dict[str, dict[str, Any]] = {}
-    if not _DISH_TABLE_PATH.is_file():
+    for path in _DISH_TABLE_PATHS:
+        if not path.is_file():
+            continue
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                table[row["dish"]] = row
         return table
-    with _DISH_TABLE_PATH.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            table[row["dish"]] = row
     return table
 
 

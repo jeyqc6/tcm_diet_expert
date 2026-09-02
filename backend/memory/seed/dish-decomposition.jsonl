@@ -1,0 +1,217 @@
+{"dish":"番茄炒蛋","ingredients":["鸡蛋","番茄","食用油","盐","糖"],"method":"stir_fry","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":""}
+{"dish":"蚝油生菜","ingredients":["生菜","蚝油","蒜","食用油"],"method":"blanch_then_sauce","condiments":["蚝油"],"allergens":["甲壳/贝类","含麸质谷物"],"tcm_nature":"凉","note":"⚠️ 菜名完全不提示贝类"}
+{"dish":"蚝油炒芥蓝","ingredients":["芥蓝","蚝油","蒜","食用油"],"method":"stir_fry","condiments":["蚝油"],"allergens":["甲壳/贝类","含麸质谷物"],"tcm_nature":"凉","note":"⚠️ 同上"}
+{"dish":"红烧肉","ingredients":["五花肉","酱油","冰糖","料酒","八角"],"method":"braise","condiments":["酱油","料酒"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":"肥甘厚味,痰湿质慎"}
+{"dish":"宫保鸡丁","ingredients":["鸡胸肉","花生","干辣椒","酱油","醋","糖","淀粉"],"method":"stir_fry","condiments":["酱油"],"allergens":["花生","大豆","含麸质谷物"],"tcm_nature":"温","note":"⚠️ 花生是主料之一"}
+{"dish":"麻婆豆腐","ingredients":["豆腐","牛肉末","豆瓣酱","花椒","辣椒"],"method":"braise","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"热","note":"湿热质、阴虚质慎"}
+{"dish":"鱼香肉丝","ingredients":["猪里脊","木耳","胡萝卜","泡椒","豆瓣酱","醋","糖","淀粉"],"method":"stir_fry","condiments":["豆瓣酱","酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":"名字有鱼但无鱼"}
+{"dish":"回锅肉","ingredients":["五花肉","青蒜","豆瓣酱","甜面酱"],"method":"stir_fry","condiments":["豆瓣酱","甜面酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"糖醋里脊","ingredients":["猪里脊","面粉","鸡蛋","番茄酱","糖","醋"],"method":"deep_fry","condiments":[],"allergens":["蛋","含麸质谷物"],"tcm_nature":"温","note":"⚠️ 挂糊含蛋清和面粉,菜名无提示;油炸,高热量密度"}
+{"dish":"锅包肉","ingredients":["猪里脊","淀粉","鸡蛋","糖","醋"],"method":"deep_fry","condiments":[],"allergens":["蛋"],"tcm_nature":"温","note":"⚠️ 同上"}
+{"dish":"清蒸鲈鱼","ingredients":["鲈鱼","葱","姜","蒸鱼豉油"],"method":"steam","condiments":["酱油"],"allergens":["鱼","大豆","含麸质谷物"],"tcm_nature":"平","note":"烹饪方式营养保留好"}
+{"dish":"白灼虾","ingredients":["基围虾","姜","葱"],"method":"blanch","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"温","note":""}
+{"dish":"酸辣汤","ingredients":["豆腐","木耳","笋丝","鸡蛋","醋","白胡椒","淀粉"],"method":"soup","condiments":["酱油"],"allergens":["蛋","大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"西红柿鸡蛋汤","ingredients":["番茄","鸡蛋","盐"],"method":"soup","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":""}
+{"dish":"冬瓜排骨汤","ingredients":["冬瓜","猪排骨","姜"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":"利湿,痰湿质湿热质适用"}
+{"dish":"小鸡炖蘑菇","ingredients":["鸡肉","干蘑菇","粉条","酱油"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"羊肉汤","ingredients":["羊肉","白萝卜","姜","当归(部分)"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"热","note":"阳虚质冬季对症;湿热质阴虚质忌"}
+{"dish":"绿豆汤","ingredients":["绿豆","糖"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"寒","note":"清热解暑;阳虚质慎"}
+{"dish":"银耳莲子羹","ingredients":["银耳","莲子","冰糖","枸杞"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":"滋阴润燥,阴虚质秋季对症"}
+{"dish":"小米粥","ingredients":["小米"],"method":"congee","condiments":[],"allergens":[],"tcm_nature":"平","note":"健脾;⚠️ 升糖较快,血糖敏感者注意"}
+{"dish":"皮蛋瘦肉粥","ingredients":["大米","皮蛋","猪肉"],"method":"congee","condiments":["酱油"],"allergens":["蛋","大豆","含麸质谷物"],"tcm_nature":"平偏凉","note":""}
+{"dish":"山药排骨汤","ingredients":["山药","猪排骨","枸杞","姜"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平","note":"补中益气,气虚质对症"}
+{"dish":"凉拌黄瓜","ingredients":["黄瓜","蒜","醋","香油","生抽"],"method":"cold_dressed","condiments":["香油","酱油"],"allergens":["芝麻","大豆","含麸质谷物"],"tcm_nature":"凉","note":"⚠️ 香油含芝麻;生冷,阳虚痰湿慎"}
+{"dish":"凉拌木耳","ingredients":["黑木耳","香菜","蒜","醋","香油","生抽"],"method":"cold_dressed","condiments":["香油","酱油"],"allergens":["芝麻","大豆","含麸质谷物"],"tcm_nature":"平偏凉","note":"⚠️ 香油含芝麻;木耳活血,血瘀质适用"}
+{"dish":"拍黄瓜","ingredients":["黄瓜","蒜","醋","香油"],"method":"cold_dressed","condiments":["香油"],"allergens":["芝麻"],"tcm_nature":"凉","note":"⚠️ 香油含芝麻"}
+{"dish":"麻酱菠菜","ingredients":["菠菜","芝麻酱","蒜","醋"],"method":"blanch_then_dressed","condiments":["麻酱"],"allergens":["芝麻"],"tcm_nature":"凉","note":"⚠️ 菠菜草酸阻碍铁钙吸收,焯水可改善"}
+{"dish":"干煸四季豆","ingredients":["四季豆","猪肉末","干辣椒","豆豉"],"method":"dry_fry","condiments":["豆豉"],"allergens":["大豆"],"tcm_nature":"温","note":"用油量大"}
+{"dish":"地三鲜","ingredients":["茄子","土豆","青椒","酱油","淀粉"],"method":"deep_fry_then_stir","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":"⚠️ 素菜但过油,实际油脂含量高"}
+{"dish":"鱼香茄子","ingredients":["茄子","豆瓣酱","蒜","醋","糖"],"method":"deep_fry_then_stir","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平偏温","note":"⚠️ 同上"}
+{"dish":"清炒时蔬","ingredients":["绿叶菜","蒜","食用油","盐"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"随菜","note":"熟食,降低生冷属性"}
+{"dish":"蒜蓉西兰花","ingredients":["西兰花","蒜","食用油"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平","note":"西兰花蒸制维C几乎不损失"}
+{"dish":"白灼菜心","ingredients":["菜心","蚝油或生抽","蒜"],"method":"blanch","condiments":["蚝油","酱油"],"allergens":["甲壳/贝类","大豆","含麸质谷物"],"tcm_nature":"凉","note":"⚠️ 蘸料决定过敏原,需追问"}
+{"dish":"西湖牛肉羹","ingredients":["牛肉末","豆腐","鸡蛋清","淀粉","香菜"],"method":"thick_soup","condiments":["酱油"],"allergens":["蛋","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"蛋炒饭","ingredients":["米饭","鸡蛋","葱","食用油"],"method":"stir_fry","condiments":["酱油"],"allergens":["蛋","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"扬州炒饭","ingredients":["米饭","鸡蛋","虾仁","火腿","豌豆"],"method":"stir_fry","condiments":["酱油"],"allergens":["蛋","甲壳/贝类","大豆","含麸质谷物"],"tcm_nature":"平","note":"⚠️ 含虾仁,菜名无提示"}
+{"dish":"牛肉面","ingredients":["面条","牛肉","牛骨高汤","青菜"],"method":"noodle_soup","condiments":["酱油"],"allergens":["含麸质谷物","大豆"],"tcm_nature":"温","note":"⚠️ 高汤成分不可见"}
+{"dish":"馄饨","ingredients":["馄饨皮","猪肉馅","虾仁(部分)","高汤"],"method":"boil","condiments":["酱油","香油"],"allergens":["含麸质谷物","蛋","甲壳/贝类","芝麻","大豆"],"tcm_nature":"平","note":"⚠️ 馅料与高汤双重不确定"}
+{"dish":"火锅","ingredients":["各类涮品","锅底"],"method":"hotpot","condiments":["麻酱","沙茶酱","蚝油","腐乳"],"allergens":["芝麻","花生","甲壳/贝类","鱼","大豆","含麸质谷物"],"tcm_nature":"随锅底","note":"⚠️⚠️ 成分最不可控的场景。蘸料区通常有麻酱和沙茶酱,后者是四重过敏原。特禀质应直接提示高风险"}
+{"dish":"烧烤","ingredients":["肉串","蔬菜串"],"method":"grill","condiments":["孜然","辣椒粉","刷酱"],"allergens":["芝麻","花生(部分)","大豆","含麸质谷物"],"tcm_nature":"热","note":"⚠️ 刷酱成分不明;湿热质阴虚质忌"}
+{"dish":"沙拉","ingredients":["生菜","番茄","黄瓜","沙拉酱"],"method":"raw","condiments":["沙拉酱"],"allergens":["蛋","奶(部分)","大豆"],"tcm_nature":"寒","note":"⚠️ 生冷;沙拉酱通常含蛋黄。见规则 W01/K01"}
+{"dish":"三明治","ingredients":["面包","火腿","生菜","芝士","蛋黄酱"],"method":"cold","condiments":["蛋黄酱"],"allergens":["含麸质谷物","奶","蛋"],"tcm_nature":"平偏凉","note":""}
+{"dish":"豆浆","ingredients":["黄豆"],"method":"beverage","condiments":[],"allergens":["大豆"],"tcm_nature":"平偏凉","note":""}
+{"dish":"奶茶","ingredients":["茶","牛奶或植脂末","糖","小料"],"method":"beverage","condiments":[],"allergens":["奶(部分)","含麸质谷物(部分小料)"],"tcm_nature":"随配方","note":"⚠️ 植脂末部分含奶蛋白部分不含,需逐项确认;⚠️ 茶单宁阻碍铁吸收(规则 S08)"}
+{"dish":"红枣枸杞茶","ingredients":["红枣","枸杞"],"method":"beverage","condiments":[],"allergens":[],"tcm_nature":"温","note":"⚠️ 见规则 B01——'补血'与纠正缺铁不是一回事"}
+{"dish":"可乐鸡翅","ingredients":["鸡翅","可乐","酱油","姜","八角"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"红烧排骨","ingredients":["排骨","酱油","冰糖","料酒","八角"],"method":"braise","condiments":["酱油","料酒"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"糖醋排骨","ingredients":["排骨","糖","醋","酱油","淀粉"],"method":"deep_fry_then_stir","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"东坡肉","ingredients":["五花肉","酱油","冰糖","黄酒"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":"肥甘厚味,痰湿质慎"}
+{"dish":"梅菜扣肉","ingredients":["五花肉","梅干菜","酱油","冰糖"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":"肥甘厚味,痰湿质慎"}
+{"dish":"水煮肉片","ingredients":["猪里脊","豆瓣酱","花椒","干辣椒","淀粉"],"method":"boil","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"热","note":"湿热质阴虚质慎"}
+{"dish":"辣子鸡","ingredients":["鸡肉","干辣椒","花椒","淀粉","食用油"],"method":"deep_fry","condiments":[],"allergens":[],"tcm_nature":"热","note":"湿热质阴虚质忌辛辣"}
+{"dish":"黄焖鸡","ingredients":["鸡肉","土豆","酱油","冰糖","八角"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"啤酒鸭","ingredients":["鸭肉","啤酒","豆瓣酱","姜"],"method":"braise","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"凉","note":"鸭肉性凉,阴虚质适用;阳虚质慎"}
+{"dish":"北京烤鸭","ingredients":["鸭肉","甜面酱","黄瓜","葱","薄饼"],"method":"roast","condiments":["甜面酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":"⚠️ 薄饼与甜面酱含麸质/大豆,菜名无提示"}
+{"dish":"盐焗鸡","ingredients":["鸡肉","盐焗粉","姜"],"method":"braise","condiments":[],"allergens":[],"tcm_nature":"温","note":""}
+{"dish":"白切鸡","ingredients":["鸡肉","姜","葱","生抽"],"method":"boil","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"口水鸡","ingredients":["鸡肉","红油","花椒","芝麻","蒜","生抽"],"method":"cold_dressed","condiments":["酱油"],"allergens":["芝麻","大豆","含麸质谷物"],"tcm_nature":"热","note":"⚠️ 撒芝麻,菜名无提示"}
+{"dish":"毛血旺","ingredients":["鸭血","午餐肉","黄豆芽","豆瓣酱","花椒"],"method":"boil","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"热","note":"⚠️ 午餐肉/黄豆芽制品成分复杂,湿热质阴虚质忌"}
+{"dish":"水煮鱼","ingredients":["草鱼","豆瓣酱","花椒","干辣椒","淀粉"],"method":"boil","condiments":["豆瓣酱"],"allergens":["鱼","大豆","含麸质谷物"],"tcm_nature":"热","note":""}
+{"dish":"剁椒鱼头","ingredients":["鱼头","剁椒","蒜","姜"],"method":"steam","condiments":[],"allergens":["鱼"],"tcm_nature":"热","note":""}
+{"dish":"酸菜鱼","ingredients":["草鱼","酸菜","泡椒","淀粉"],"method":"boil","condiments":[],"allergens":["鱼"],"tcm_nature":"热","note":""}
+{"dish":"红烧鱼","ingredients":["鱼","酱油","姜","葱","料酒"],"method":"braise","condiments":["酱油"],"allergens":["鱼","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"糖醋鱼","ingredients":["鱼","面粉","糖","醋","番茄酱"],"method":"deep_fry","condiments":[],"allergens":["鱼","含麸质谷物"],"tcm_nature":"温","note":"⚠️ 挂糊含面粉;油炸,高热量密度"}
+{"dish":"狮子头","ingredients":["猪肉末","荸荠","鸡蛋","淀粉","青菜"],"method":"braise","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":""}
+{"dish":"干锅牛蛙","ingredients":["牛蛙","豆瓣酱","芹菜","干辣椒"],"method":"dry_fry","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"热","note":""}
+{"dish":"辣子鸡丁","ingredients":["鸡胸肉","干辣椒","花生","淀粉"],"method":"stir_fry","condiments":[],"allergens":["花生"],"tcm_nature":"热","note":"⚠️ 花生是配料之一,菜名无提示"}
+{"dish":"咖喱鸡","ingredients":["鸡肉","咖喱块","土豆","胡萝卜","椰浆"],"method":"braise","condiments":[],"allergens":["含麸质谷物","奶"],"tcm_nature":"温","note":"⚠️ 咖喱块常含小麦粉与乳制品成分,菜名无提示"}
+{"dish":"咖喱牛肉","ingredients":["牛肉","咖喱块","土豆","胡萝卜"],"method":"braise","condiments":[],"allergens":["含麸质谷物","奶"],"tcm_nature":"温","note":"⚠️ 同咖喱鸡"}
+{"dish":"红焖羊肉","ingredients":["羊肉","豆瓣酱","姜","料酒"],"method":"braise","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"热","note":"阳虚质冬季对症;阴虚质湿热质慎"}
+{"dish":"孜然羊肉","ingredients":["羊肉","孜然","辣椒粉","洋葱"],"method":"stir_fry","condiments":["孜然","辣椒粉"],"allergens":[],"tcm_nature":"热","note":"阴虚质湿热质慎"}
+{"dish":"卤牛肉","ingredients":["牛腱子","酱油","八角","桂皮"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"卤猪蹄","ingredients":["猪蹄","酱油","冰糖","八角"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"叉烧肉","ingredients":["猪梅头肉","叉烧酱","蜂蜜"],"method":"roast","condiments":["叉烧酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":"⚠️ 叉烧酱常含大豆/麸质成分"}
+{"dish":"咕咾肉","ingredients":["猪肉","菠萝","青椒","番茄酱","淀粉"],"method":"deep_fry_then_stir","condiments":[],"allergens":[],"tcm_nature":"温","note":""}
+{"dish":"蒜泥白肉","ingredients":["猪五花肉","蒜","生抽","辣椒油"],"method":"boil","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"木须肉","ingredients":["猪肉丝","鸡蛋","木耳","黄花菜","黄瓜"],"method":"stir_fry","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":""}
+{"dish":"京酱肉丝","ingredients":["猪里脊","甜面酱","葱丝","豆腐皮"],"method":"stir_fry","condiments":["甜面酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":"⚠️ 甜面酱含麸质,豆腐皮是大豆制品"}
+{"dish":"尖椒肉丝","ingredients":["猪里脊","青椒","酱油","淀粉"],"method":"stir_fry","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"蚂蚁上树","ingredients":["猪肉末","粉丝","豆瓣酱","葱"],"method":"stir_fry","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"麻辣香锅","ingredients":["各类食材","香锅底料","干辣椒","花椒"],"method":"dry_fry","condiments":["香锅底料"],"allergens":["芝麻","花生","大豆","含麸质谷物"],"tcm_nature":"热","note":"⚠️ 底料成分不固定,与火锅同类风险,需追问"}
+{"dish":"大盘鸡","ingredients":["鸡肉","土豆","青椒","啤酒","豆瓣酱"],"method":"braise","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"手撕鸡","ingredients":["鸡肉","葱","姜","生抽"],"method":"boil","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"油焖大虾","ingredients":["基围虾","姜","葱","番茄酱","糖"],"method":"braise","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"温","note":""}
+{"dish":"蒜蓉粉丝蒸虾","ingredients":["虾","粉丝","蒜","蒸鱼豉油"],"method":"steam","condiments":["酱油"],"allergens":["甲壳/贝类","大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"清蒸大闸蟹","ingredients":["大闸蟹","姜","醋"],"method":"steam","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"寒","note":"脾胃虚寒者慎"}
+{"dish":"香辣蟹","ingredients":["螃蟹","豆瓣酱","干辣椒","花椒"],"method":"stir_fry","condiments":["豆瓣酱"],"allergens":["甲壳/贝类","大豆","含麸质谷物"],"tcm_nature":"热","note":""}
+{"dish":"红烧带鱼","ingredients":["带鱼","酱油","姜","料酒"],"method":"braise","condiments":["酱油"],"allergens":["鱼","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"豆豉蒸鱼","ingredients":["鱼","豆豉","姜","蒸鱼豉油"],"method":"steam","condiments":["酱油"],"allergens":["鱼","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"蒜蓉粉丝蒸扇贝","ingredients":["扇贝","粉丝","蒜","蒸鱼豉油"],"method":"steam","condiments":["酱油"],"allergens":["甲壳/贝类","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"椒盐虾","ingredients":["虾","椒盐","蒜"],"method":"deep_fry","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"温","note":""}
+{"dish":"蛤蜊汤","ingredients":["蛤蜊","姜","葱"],"method":"soup","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"寒","note":""}
+{"dish":"紫菜蛋花汤","ingredients":["紫菜","鸡蛋","虾皮","香油"],"method":"soup","condiments":["香油"],"allergens":["蛋","甲壳/贝类","芝麻"],"tcm_nature":"平","note":"⚠️ 虾皮和香油都是隐藏过敏原,菜名无提示"}
+{"dish":"清炒空心菜","ingredients":["空心菜","蒜","食用油"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"凉","note":""}
+{"dish":"蒜蓉茄子","ingredients":["茄子","蒜","食用油","生抽"],"method":"steam","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"凉","note":""}
+{"dish":"虎皮尖椒","ingredients":["尖椒","生抽","蒜"],"method":"pan_fry","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"手撕包菜","ingredients":["包菜","蒜","干辣椒"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"醋溜土豆丝","ingredients":["土豆","醋","干辣椒"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"酸辣土豆丝","ingredients":["土豆","醋","干辣椒","花椒"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"麻婆茄子","ingredients":["茄子","豆瓣酱","猪肉末","淀粉"],"method":"braise","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"家常豆腐","ingredients":["豆腐","猪肉片","豆瓣酱","青蒜"],"method":"braise","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"皮蛋豆腐","ingredients":["豆腐","皮蛋","生抽","香油"],"method":"cold_dressed","condiments":["酱油","香油"],"allergens":["蛋","大豆","含麸质谷物","芝麻"],"tcm_nature":"凉","note":"⚠️ 香油含芝麻,菜名无提示"}
+{"dish":"豆腐脑","ingredients":["黄豆","卤汁","淀粉"],"method":"steam","condiments":[],"allergens":["大豆"],"tcm_nature":"平偏凉","note":""}
+{"dish":"韭菜炒鸡蛋","ingredients":["韭菜","鸡蛋","食用油"],"method":"stir_fry","condiments":[],"allergens":["蛋"],"tcm_nature":"温","note":""}
+{"dish":"番茄土豆丝","ingredients":["番茄","土豆","盐"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"干煸豆角","ingredients":["豆角","肉末","干辣椒"],"method":"dry_fry","condiments":[],"allergens":[],"tcm_nature":"温","note":"用油量大"}
+{"dish":"上汤娃娃菜","ingredients":["娃娃菜","皮蛋","枸杞","高汤"],"method":"soup","condiments":[],"allergens":["蛋"],"tcm_nature":"平偏凉","note":"⚠️ 高汤成分不可见"}
+{"dish":"菌菇汤","ingredients":["各类菌菇","枸杞","姜"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"番茄豆腐汤","ingredients":["番茄","豆腐","鸡蛋"],"method":"soup","condiments":[],"allergens":["蛋","大豆"],"tcm_nature":"平","note":""}
+{"dish":"蒜蓉蒸丝瓜","ingredients":["丝瓜","蒜","粉丝"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"凉","note":""}
+{"dish":"清炒豆苗","ingredients":["豌豆苗","蒜","食用油"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"炸酱面","ingredients":["面条","黄豆酱","猪肉丁","黄瓜丝"],"method":"noodle_soup","condiments":["黄豆酱"],"allergens":["含麸质谷物","大豆"],"tcm_nature":"平","note":""}
+{"dish":"担担面","ingredients":["面条","芽菜","花生碎","辣椒油","芝麻酱"],"method":"noodle_soup","condiments":["麻酱"],"allergens":["含麸质谷物","花生","芝麻"],"tcm_nature":"温","note":"⚠️ 花生碎和芝麻酱都是隐藏过敏原,菜名无提示"}
+{"dish":"兰州拉面","ingredients":["面条","牛肉","萝卜","香菜"],"method":"noodle_soup","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"温","note":"⚠️ 高汤成分不可见"}
+{"dish":"重庆小面","ingredients":["面条","辣椒油","花椒","芽菜","花生碎"],"method":"noodle_soup","condiments":[],"allergens":["含麸质谷物","花生"],"tcm_nature":"热","note":"⚠️ 花生碎是隐藏过敏原"}
+{"dish":"热干面","ingredients":["面条","芝麻酱","萝卜干","葱花"],"method":"noodle_soup","condiments":["麻酱"],"allergens":["含麸质谷物","芝麻"],"tcm_nature":"平","note":"⚠️ 芝麻酱是核心调料,菜名无提示"}
+{"dish":"过桥米线","ingredients":["米线","鸡汤","肉片","鹌鹑蛋"],"method":"noodle_soup","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":"⚠️ 高汤成分不可见"}
+{"dish":"螺蛳粉","ingredients":["米粉","螺蛳汤","酸笋","花生","腐竹"],"method":"noodle_soup","condiments":[],"allergens":["花生","大豆"],"tcm_nature":"热","note":"⚠️ 花生和腐竹(大豆制品)都是隐藏过敏原"}
+{"dish":"肠粉","ingredients":["米浆","鸡蛋","生抽","葱花"],"method":"steam","condiments":["酱油"],"allergens":["蛋","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"煲仔饭","ingredients":["米饭","腊肠","青菜","生抽"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"咖喱饭","ingredients":["米饭","咖喱块","土豆","胡萝卜","肉"],"method":"braise","condiments":[],"allergens":["含麸质谷物","奶"],"tcm_nature":"温","note":"⚠️ 咖喱块常含小麦粉与乳制品成分"}
+{"dish":"黄焖鸡米饭","ingredients":["米饭","鸡肉","土豆","酱油"],"method":"braise","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"麻辣烫","ingredients":["各类食材","麻辣烫底料","芝麻酱"],"method":"hotpot","condiments":["麻酱"],"allergens":["芝麻","花生","大豆","含麸质谷物"],"tcm_nature":"热","note":"⚠️ 底料/蘸料成分不固定,与火锅同类风险,需追问"}
+{"dish":"酸辣粉","ingredients":["红薯粉","醋","辣椒油","花生碎"],"method":"noodle_soup","condiments":[],"allergens":["花生"],"tcm_nature":"热","note":""}
+{"dish":"冒菜","ingredients":["各类食材","豆瓣酱","花椒"],"method":"hotpot","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"热","note":""}
+{"dish":"生煎包","ingredients":["面粉","猪肉馅","葱"],"method":"pan_fry","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"小笼包","ingredients":["面粉","猪肉馅","皮冻","姜"],"method":"steam","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"叉烧包","ingredients":["面粉","叉烧肉","蚝油"],"method":"steam","condiments":["蚝油"],"allergens":["含麸质谷物","甲壳/贝类","大豆"],"tcm_nature":"平","note":"⚠️ 蚝油含贝类成分,菜名无提示"}
+{"dish":"虾饺","ingredients":["澄粉","虾仁","猪肉末"],"method":"steam","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"平","note":""}
+{"dish":"烧卖","ingredients":["糯米","猪肉末","香菇","面皮"],"method":"steam","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"凤爪","ingredients":["鸡爪","豆豉","蒸鱼豉油"],"method":"steam","condiments":["酱油"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"煎饼果子","ingredients":["面糊","鸡蛋","油条","甜面酱","葱花"],"method":"pan_fry","condiments":["甜面酱"],"allergens":["含麸质谷物","蛋","大豆"],"tcm_nature":"平","note":""}
+{"dish":"葱油饼","ingredients":["面粉","葱花","食用油","盐"],"method":"pan_fry","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"肉夹馍","ingredients":["白吉馍","卤猪肉"],"method":"assembled","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"凉皮","ingredients":["面粉","黄瓜丝","芝麻酱","醋","辣椒油"],"method":"cold_dressed","condiments":["麻酱"],"allergens":["含麸质谷物","芝麻"],"tcm_nature":"凉","note":"⚠️ 芝麻酱是核心调料,菜名无提示"}
+{"dish":"油条","ingredients":["面粉","食用油","泡打粉"],"method":"deep_fry","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"温","note":"油炸,高热量密度"}
+{"dish":"猪肉大葱包子","ingredients":["面粉","猪肉馅","大葱"],"method":"steam","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"馒头","ingredients":["面粉","酵母"],"method":"steam","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"花卷","ingredients":["面粉","食用油","葱花"],"method":"steam","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"烙饼","ingredients":["面粉","食用油"],"method":"pan_fry","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"猪肉白菜饺子","ingredients":["面粉","猪肉馅","白菜"],"method":"boil","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"韭菜盒子","ingredients":["面粉","鸡蛋","韭菜","粉丝"],"method":"pan_fry","condiments":[],"allergens":["含麸质谷物","蛋"],"tcm_nature":"温","note":""}
+{"dish":"春卷","ingredients":["面皮","猪肉丝","豆芽","胡萝卜丝"],"method":"deep_fry","condiments":[],"allergens":["含麸质谷物"],"tcm_nature":"平偏温","note":"油炸,高热量密度"}
+{"dish":"八宝粥","ingredients":["大米","红豆","红枣","花生","莲子"],"method":"congee","condiments":[],"allergens":["花生"],"tcm_nature":"平","note":"⚠️ 花生是常见配料之一,菜名无提示"}
+{"dish":"燕麦粥","ingredients":["燕麦","牛奶或水"],"method":"congee","condiments":[],"allergens":["奶"],"tcm_nature":"平","note":"⚠️ 用牛奶煮的版本含奶,需确认做法"}
+{"dish":"玉米排骨汤","ingredients":["玉米","猪排骨","胡萝卜"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"冬瓜薏米汤","ingredients":["冬瓜","薏米","排骨"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":"利湿,痰湿质湿热质适用"}
+{"dish":"老鸭汤","ingredients":["老鸭","笋干","姜"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"凉","note":"阴虚质适用;阳虚质慎"}
+{"dish":"猪肚鸡","ingredients":["猪肚","鸡肉","白胡椒","枸杞"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"温","note":"补气健脾,气虚质对症"}
+{"dish":"蛋挞","ingredients":["面粉","黄油","鸡蛋","牛奶","糖"],"method":"bake","condiments":[],"allergens":["含麸质谷物","蛋","奶"],"tcm_nature":"温","note":""}
+{"dish":"双皮奶","ingredients":["牛奶","鸡蛋清","糖"],"method":"steam","condiments":[],"allergens":["奶","蛋"],"tcm_nature":"平","note":""}
+{"dish":"红豆沙","ingredients":["红豆","糖"],"method":"soup","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":"利湿,痰湿质适用"}
+{"dish":"芝麻糊","ingredients":["黑芝麻","糖","大米"],"method":"soup","condiments":[],"allergens":["芝麻"],"tcm_nature":"平","note":"补肝肾,阴虚质适用"}
+{"dish":"水煮蛋","ingredients":["鸡蛋"],"method":"boil","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":""}
+{"dish":"煎蛋","ingredients":["鸡蛋","食用油"],"method":"pan_fry","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":""}
+{"dish":"茶叶蛋","ingredients":["鸡蛋","茶叶","酱油","八角"],"method":"boil","condiments":["酱油"],"allergens":["蛋","大豆","含麸质谷物"],"tcm_nature":"平","note":""}
+{"dish":"酸奶","ingredients":["牛奶","乳酸菌","糖"],"method":"beverage","condiments":[],"allergens":["奶"],"tcm_nature":"平偏凉","note":""}
+{"dish":"牛奶","ingredients":["牛奶"],"method":"beverage","condiments":[],"allergens":["奶"],"tcm_nature":"平","note":""}
+{"dish":"豆花","ingredients":["黄豆","卤水"],"method":"steam","condiments":[],"allergens":["大豆"],"tcm_nature":"平偏凉","note":""}
+{"dish":"米粉肉","ingredients":["猪肉","炒米粉","豆瓣酱"],"method":"steam","condiments":["豆瓣酱"],"allergens":["大豆","含麸质谷物"],"tcm_nature":"温","note":""}
+{"dish":"苹果","ingredients":["苹果"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":"生津润肺"}
+{"dish":"香蕉","ingredients":["香蕉"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"寒","note":"润肠通便,阳虚质慎"}
+{"dish":"橙子","ingredients":["橙子"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":""}
+{"dish":"西瓜","ingredients":["西瓜"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"寒","note":"清热解暑,阳虚质忌"}
+{"dish":"葡萄","ingredients":["葡萄"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"梨","ingredients":["梨"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":"润肺止咳,阴虚质秋季对症"}
+{"dish":"草莓","ingredients":["草莓"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":""}
+{"dish":"猕猴桃","ingredients":["猕猴桃"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"寒","note":"脾胃虚寒者慎"}
+{"dish":"火龙果","ingredients":["火龙果"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":""}
+{"dish":"芒果","ingredients":["芒果"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":"⚠️ 部分人对芒果有接触性过敏反应"}
+{"dish":"菠萝","ingredients":["菠萝"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"平","note":"⚠️ 菠萝蛋白酶可能引起口腔刺激反应"}
+{"dish":"桃子","ingredients":["桃子"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"温","note":""}
+{"dish":"荔枝","ingredients":["荔枝"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"温","note":"多食易上火,阴虚质湿热质慎"}
+{"dish":"桂圆","ingredients":["桂圆"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"温","note":"补气血,气虚质血虚适用;阴虚质湿热质慎"}
+{"dish":"柚子","ingredients":["柚子"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"寒","note":""}
+{"dish":"白米饭","ingredients":["大米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"⚠️ 不收录单字「饭」——会误命中晚饭/午饭/吃饭"}
+{"dish":"米饭","ingredients":["大米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"黄焖鸡米饭等更长菜名优先命中,本条不会抢匹配"}
+{"dish":"白饭","ingredients":["大米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"糙米饭","ingredients":["糙米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"膳食纤维高于白米"}
+{"dish":"粗粮饭","ingredients":["糙米","小米","玉米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"配比因家而异,此处记常见组合"}
+{"dish":"杂粮饭","ingredients":["糙米","小米","燕麦","玉米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"配比因家而异,此处记常见组合"}
+{"dish":"二米饭","ingredients":["大米","小米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"紫米饭","ingredients":["紫米","大米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"糯米饭","ingredients":["糯米"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"温","note":"黏滞,痰湿质慎;⚠️ 升糖较快"}
+{"dish":"白粥","ingredients":["大米"],"method":"congee","condiments":[],"allergens":[],"tcm_nature":"平","note":"⚠️ 升糖较快,血糖敏感者注意"}
+{"dish":"小米","ingredients":["小米"],"method":"congee","condiments":[],"allergens":[],"tcm_nature":"平","note":"小米粥是更长菜名,优先命中"}
+{"dish":"燕麦","ingredients":["燕麦"],"method":"congee","condiments":[],"allergens":["奶(部分)"],"tcm_nature":"平","note":"⚠️ 牛奶煮的版本含奶,需确认做法"}
+{"dish":"玉米","ingredients":["玉米"],"method":"boil","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"煮玉米","ingredients":["玉米"],"method":"boil","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"南瓜","ingredients":["南瓜"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"温","note":"健脾,气虚质适用"}
+{"dish":"红薯","ingredients":["红薯"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"补中;⚠️ 升糖较快"}
+{"dish":"地瓜","ingredients":["红薯"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"红薯的常用别称"}
+{"dish":"烤红薯","ingredients":["红薯"],"method":"roast","condiments":[],"allergens":[],"tcm_nature":"温","note":"⚠️ 升糖较快"}
+{"dish":"紫薯","ingredients":["紫薯"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"土豆","ingredients":["土豆"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"醋溜土豆丝等更长菜名优先命中"}
+{"dish":"山药","ingredients":["山药"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"补中益气,气虚质对症;山药排骨汤是更长菜名"}
+{"dish":"芋头","ingredients":["芋头"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"莲藕","ingredients":["莲藕"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":"生藕性凉熟藕偏温"}
+{"dish":"冬瓜","ingredients":["冬瓜"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"凉","note":"利湿;冬瓜排骨汤/冬瓜薏米汤是更长菜名"}
+{"dish":"黄瓜","ingredients":["黄瓜"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":"生冷,阳虚痰湿慎;拍黄瓜/凉拌黄瓜是更长菜名"}
+{"dish":"番茄","ingredients":["番茄"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":"番茄炒蛋等更长菜名优先命中"}
+{"dish":"西红柿","ingredients":["番茄"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":"番茄的常用别称"}
+{"dish":"胡萝卜","ingredients":["胡萝卜"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"平","note":""}
+{"dish":"白菜","ingredients":["白菜"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"平偏凉","note":""}
+{"dish":"豆腐","ingredients":["豆腐"],"method":"steam","condiments":[],"allergens":["大豆"],"tcm_nature":"平偏凉","note":"麻婆豆腐等更长菜名优先命中"}
+{"dish":"西兰花","ingredients":["西兰花"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"平","note":"蒜蓉西兰花是更长菜名"}
+{"dish":"茄子","ingredients":["茄子"],"method":"steam","condiments":[],"allergens":[],"tcm_nature":"凉","note":"鱼香茄子/蒜蓉茄子等更长菜名优先命中"}
+{"dish":"苦瓜","ingredients":["苦瓜"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"寒","note":"清热;阳虚质慎"}
+{"dish":"丝瓜","ingredients":["丝瓜"],"method":"stir_fry","condiments":[],"allergens":[],"tcm_nature":"凉","note":"蒜蓉蒸丝瓜是更长菜名"}
+{"dish":"生菜","ingredients":["生菜"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"凉","note":"生冷;蚝油生菜是更长菜名"}
+{"dish":"菠菜","ingredients":["菠菜"],"method":"blanch","condiments":[],"allergens":[],"tcm_nature":"凉","note":"草酸阻碍铁钙吸收,焯水可改善;麻酱菠菜是更长菜名"}
+{"dish":"芥蓝","ingredients":["芥蓝"],"method":"blanch","condiments":[],"allergens":[],"tcm_nature":"凉","note":"蚝油炒芥蓝是更长菜名,本条不会抢匹配"}
+{"dish":"毛豆","ingredients":["毛豆"],"method":"boil","condiments":[],"allergens":["大豆"],"tcm_nature":"平","note":""}
+{"dish":"鸡蛋","ingredients":["鸡蛋"],"method":"boil","condiments":[],"allergens":["蛋"],"tcm_nature":"平","note":"水煮蛋/煎蛋/茶叶蛋是更具体做法,优先命中"}
+{"dish":"虾","ingredients":["虾"],"method":"boil","condiments":[],"allergens":["甲壳/贝类"],"tcm_nature":"温","note":"白灼虾等更长菜名优先命中"}
+{"dish":"花生","ingredients":["花生"],"method":"raw","condiments":[],"allergens":["花生"],"tcm_nature":"平","note":""}
+{"dish":"核桃","ingredients":["核桃"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"温","note":"补肾,阳虚质适用"}
+{"dish":"红枣","ingredients":["红枣"],"method":"raw","condiments":[],"allergens":[],"tcm_nature":"温","note":"红枣枸杞茶是更长菜名"}
