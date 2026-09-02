@@ -121,7 +121,9 @@ def test_healthz():
     client = TestClient(app)
     resp = client.get("/healthz")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body.get("degraded") is True
 
 
 def test_log_write_decomposes_known_dish_and_writes_after_llm_confirms_no_more_dishes():

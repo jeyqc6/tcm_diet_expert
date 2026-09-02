@@ -12,7 +12,8 @@ from backend.exceptions import (
     RetryableError,
     SubAgentTimeoutError,
 )
-from backend.llm.adapter import LLMCallError
+from backend.exceptions import LLMCallError
+from backend.llm.adapter import LLMCallError as AdapterLLMCallError
 from backend.llm.adapter import NonRetryableError as AdapterNonRetryableError
 from backend.llm.providers.replay import ReplayFixtureMissing
 from backend.mcp_server.exceptions import ToolNotDeclaredError
@@ -21,6 +22,10 @@ from backend.mcp_server.roles import CallerRole
 
 def test_adapter_reexports_the_same_non_retryable_class():
     assert AdapterNonRetryableError is NonRetryableError
+
+
+def test_exceptions_module_reexports_llm_call_error():
+    assert LLMCallError is AdapterLLMCallError
 
 
 def test_concrete_types_are_diet_expert_errors():

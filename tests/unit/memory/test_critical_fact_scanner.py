@@ -134,6 +134,29 @@ def test_english_plain_mention_without_allergy_declaration_does_not_match() -> N
     assert scan_allergen_mentions("I had shrimp for lunch today.") == ()
 
 
+def test_english_lactose_intolerant_maps_to_dairy_category() -> None:
+    mentions = scan_allergen_mentions("I am slightly lactose intolerant.")
+    assert any(m.category == "乳制品" and m.matched_term == "lactose" for m in mentions)
+
+
+def test_english_allergic_to_mango_maps_to_mango_literal() -> None:
+    mentions = scan_allergen_mentions("allergic to mangoes")
+    assert any(m.category == "芒果" and m.matched_term == "mangoes" for m in mentions)
+
+
+def test_user_log_health_restriction_message_is_detected() -> None:
+    msg = "Please log that I am slightly lactose intolerant and allergic to mangoes."
+    result = scan_critical_facts(msg, None)
+    assert result.hit is True
+    assert "乳制品" in result.new_allergens
+    assert "芒果" in result.new_allergens
+
+
+def test_chinese_lactose_intolerance_maps_to_dairy_category() -> None:
+    mentions = scan_allergen_mentions("我有乳糖不耐受")
+    assert any(m.category == "乳制品" for m in mentions)
+
+
 # ---------------------------------------------------------------------------
 # 补剂提及：逐条穷举 SUPPLEMENT_KEYWORDS
 # ---------------------------------------------------------------------------
@@ -308,3 +331,14 @@ def test_merge_into_profile_preserves_other_profile_fields() -> None:
     _, updated = merge_into_profile(result, profile)
     assert updated.constitution == "qi_xu"
     assert updated.city == "上海"
+
+
+def test_merge_into_profile_merges_preferences_lists() -> None:
+    profile = UserProfileContext(
+        user_id="u1",
+        preferences={"忌口": ["花生"]},
+    )
+    result = CriticalFactScanResult(new_preferences={"忌口": ["香菜"]})
+    payload, updated = merge_into_profile(result, profile)
+    assert payload["preferences"] == {"忌口": ["花生", "香菜"]}
+    assert updated.preferences == {"忌口": ["花生", "香菜"]}

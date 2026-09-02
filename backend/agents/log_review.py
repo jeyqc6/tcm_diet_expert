@@ -21,6 +21,7 @@ from backend.agents.user_context import UserProfileContext
 from backend.mcp_server.roles import CallerRole
 from backend.mcp_server.server import DietExpertMcpServer
 from backend.i18n import meal_type_label, t
+from backend.mcp_server.safe_call import safe_call_tool
 from backend.observability.tracing import observation, update_current
 from backend.observability.redact import redact_text
 
@@ -135,9 +136,21 @@ async def stream_log_review(
     with observation("log_review", as_type="span", input={"message": redact_text(request.message)}):
         session = server.open_session(CallerRole.ROUTER, user_id=request.user_id)
         time_range = _extract_time_range(request.message, request.locale)
-        raw = session.call_tool("query_diet_log", {"time_range": time_range, "aggregation": "raw"})
+        tool_result = safe_call_tool(
+            session, "query_diet_log", {"time_range": time_range, "aggregation": "raw"}
+        )
+        if not tool_result.ok:
+            yield sse_event(
+                "guardrail",
+                {
+                    "type": "log_review_failed",
+                    "detail": t("api.tool_call_failed", request.locale),
+                },
+            )
+            yield sse_event("done", {"trace_id": trace_id})
+            return
         tz = _resolve_review_tz(profile)
-        text = _format_diet_log_summary(raw, tz, locale=request.locale)
+        text = _format_diet_log_summary(tool_result.result, tz, locale=request.locale)
         update_current(output={"time_range": time_range, "text": redact_text(text)})
     for chunk in chunk_text(text):
         yield sse_event("token", {"text": chunk})

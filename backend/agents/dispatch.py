@@ -34,8 +34,11 @@ from backend.agents.clarification import ClarificationStore, PendingClarificatio
 from backend.agents.conflict_gaps import record_conflict_gap
 from backend.agents.log_review import stream_log_review
 from backend.agents.log_write import stream_log_write
+from backend.agents.profile_write import stream_profile_write
+from backend.agents.agent_loop import AgentLoopResourceLimitError
+from backend.agents.naive_rag_fallback import run_naive_rag_fallback
 from backend.agents.nutrition_subagent import is_recipe_assembly_request, run_nutrition_subagent
-from backend.agents.reconciliation import reconcile_subagent_results
+from backend.agents.reconciliation import ReconciliationResult, reconcile_subagent_results
 from backend.agents.routing import CompleteFn, MultiTaskCandidate, RouteBranch, RouteDecision
 from backend.agents.sse import chunk_text, sse_event
 from backend.agents.tcm_subagent import run_tcm_subagent
@@ -48,10 +51,17 @@ from backend.agents.verification import (
     repair_insufficient_evidence,
     verify,
 )
-from backend.exceptions import SubAgentTimeoutError
+from backend.exceptions import (
+    LLMCallError,
+    ResourceLimitError,
+    SubAgentTimeoutError,
+)
 from backend.guardrails.output_filters import check_allergens
 from backend.i18n import apply_language_instruction, t
+from backend.llm.adapter import ModelTier
 from backend.mcp_server.server import DietExpertMcpServer
+from backend.memory.critical_fact_scanner import CriticalFactScanResult
+from backend.memory.pending_critical_facts import PendingCriticalFactStore
 from backend.observability.cost import current_request_cost
 from backend.observability.redact import redact_text
 from backend.observability.tracing import observation, stage_log, update_current
@@ -146,6 +156,24 @@ _FORCE_ANSWER_NOTE = (
 )
 
 
+async def _force_clarifying_side_to_answer(
+    result: SubAgentResult,
+    task_input: str,
+    rerun: Callable[[str], Awaitable[SubAgentResult]],
+) -> SubAgentResult:
+    """SubAgent 只吐 `[NEED_CLARIFICATION]` 时，换 `_FORCE_ANSWER_NOTE` 再跑一次，
+    要求基于已有信息尽力回答。仍只吐问题时原样返回 `result`。"""
+    if extract_clarification_question(result.final_text) is None:
+        return result
+    try:
+        forced = await rerun(f"{task_input}\n\n{_FORCE_ANSWER_NOTE}")
+    except SubAgentTimeoutError:
+        return result
+    if extract_clarification_question(forced.final_text) is not None:
+        return result
+    return forced
+
+
 async def _resolve_unresolved_clarification(
     result: SubAgentResult,
     task_input: str,
@@ -162,19 +190,22 @@ async def _resolve_unresolved_clarification(
     原样返回，不产生任何额外调用。"""
     if allow_clarification or extract_clarification_question(result.final_text) is None:
         return result
-    try:
-        forced = await rerun(f"{task_input}\n\n{_FORCE_ANSWER_NOTE}")
-    except SubAgentTimeoutError:
-        return result
-    if extract_clarification_question(forced.final_text) is not None:
-        return result
-    return forced
+    return await _force_clarifying_side_to_answer(result, task_input, rerun)
 
 
 # The allergen reconciliation retry remains bounded at one call. Evidence
 # failures now use one no-tool repair call, avoiding repeated retrieval and
 # SubAgent cost.
 _ALLERGEN_RECONCILIATION_RETRY_LIMIT = 1
+
+# SubAgent failures that should degrade instead of bubbling out of dispatch.
+_SUBAGENT_DEGRADE_ERRORS = (
+    LLMCallError,
+    ResourceLimitError,
+    AgentLoopResourceLimitError,
+)
+
+
 def _profile_notes(profile: UserProfileContext | None) -> str:
     return profile.profile_prompt_notes() if profile else ""
 
@@ -498,6 +529,65 @@ async def _run_single_subagent(
     )
 
 
+async def _stream_naive_rag_single_domain(
+    *,
+    request: ChatRequest,
+    decision: RouteDecision,
+    task_input: str,
+    complete: CompleteFn,
+    trace_id: str,
+    profile: UserProfileContext | None,
+    locale: str,
+) -> AsyncIterator[str]:
+    """PRD §11 naive RAG fallback for single-domain SubAgent failure."""
+    constitution = profile.constitution if profile else None
+    allergens = profile.allergens if profile else ()
+    extra_notes = _profile_notes(profile)
+    summary = profile.to_verification_summary() if profile else ""
+    branch_mode: BranchMode = (
+        "fact_query" if decision.branch is RouteBranch.FACT_QUERY else "single_domain"
+    )
+    yield sse_event(
+        "guardrail",
+        {"type": "naive_rag_fallback", "detail": t("dispatch.naive_rag_fallback", locale)},
+    )
+    yield _stage_event("naive_rag_fallback", "start", locale)
+    try:
+        naive_result = await run_naive_rag_fallback(
+            task_input,
+            complete,
+            retrieval_query=request.message,
+            constitution=constitution,
+            allergens=allergens,
+            extra_profile_notes=extra_notes,
+            locale=locale,
+        )
+    except Exception as exc:
+        logger.error(
+            "single-domain naive RAG fallback failed · trace_id=%s · error=%s",
+            trace_id,
+            exc,
+        )
+        yield sse_event(
+            "guardrail",
+            {"type": "subagent_failed", "detail": t("dispatch.subagent_failed", locale)},
+        )
+        yield sse_event("done", {"trace_id": trace_id})
+        return
+    yield _stage_event("naive_rag_fallback", "done", locale)
+    async for chunk in _verify_and_stream(
+        [naive_result],
+        naive_result.final_text,
+        branch_mode,
+        trace_id,
+        complete,
+        user_profile_summary=summary,
+        user_allergens=allergens,
+        locale=locale,
+    ):
+        yield chunk
+
+
 async def _stream_single_domain(
     request: ChatRequest,
     decision: RouteDecision,
@@ -535,10 +625,71 @@ async def _stream_single_domain(
             "single-domain subagent timed out · domain=%s · trace_id=%s", domain, trace_id
         )
         yield sse_event(
+            "stage",
+            {
+                "stage": subagent_stage,
+                "status": "error",
+                "detail": t(f"dispatch.stage_{subagent_stage}", locale),
+            },
+        )
+        yield sse_event(
             "guardrail",
             {"type": "subagent_timeout", "detail": t("dispatch.subagent_timeout", locale)},
         )
         yield sse_event("done", {"trace_id": trace_id})
+        return
+    except _SUBAGENT_DEGRADE_ERRORS as exc:
+        logger.warning(
+            "single-domain subagent failed · domain=%s · trace_id=%s · error=%s",
+            domain,
+            trace_id,
+            exc,
+        )
+        yield sse_event(
+            "stage",
+            {
+                "stage": subagent_stage,
+                "status": "error",
+                "detail": t(f"dispatch.stage_{subagent_stage}", locale),
+            },
+        )
+        async for chunk in _stream_naive_rag_single_domain(
+            request=request,
+            decision=decision,
+            task_input=task_input,
+            complete=complete,
+            trace_id=trace_id,
+            profile=profile,
+            locale=locale,
+        ):
+            yield chunk
+        return
+    except Exception as exc:
+        logger.warning(
+            "single-domain subagent unexpected failure · domain=%s · trace_id=%s · error=%s",
+            domain,
+            trace_id,
+            exc,
+            exc_info=True,
+        )
+        yield sse_event(
+            "stage",
+            {
+                "stage": subagent_stage,
+                "status": "error",
+                "detail": t(f"dispatch.stage_{subagent_stage}", locale),
+            },
+        )
+        async for chunk in _stream_naive_rag_single_domain(
+            request=request,
+            decision=decision,
+            task_input=task_input,
+            complete=complete,
+            trace_id=trace_id,
+            profile=profile,
+            locale=locale,
+        ):
+            yield chunk
         return
 
     # 强制重试(追问一次仍不够信息时的 `_FORCE_ANSWER_NOTE` 那一轮)算同一次
@@ -635,8 +786,30 @@ async def _stream_dual_dispatch(
         locale=locale,
     )
     reraise_if_cancelled(tcm_result, nutrition_result)
-    yield _stage_event("subagent_tcm", "done", locale)
-    yield _stage_event("subagent_nutrition", "done", locale)
+    tcm_failed = isinstance(tcm_result, Exception)
+    nutrition_failed = isinstance(nutrition_result, Exception)
+    if tcm_failed:
+        yield sse_event(
+            "stage",
+            {
+                "stage": "subagent_tcm",
+                "status": "error",
+                "detail": t("dispatch.stage_subagent_tcm", locale),
+            },
+        )
+    else:
+        yield _stage_event("subagent_tcm", "done", locale)
+    if nutrition_failed:
+        yield sse_event(
+            "stage",
+            {
+                "stage": "subagent_nutrition",
+                "status": "error",
+                "detail": t("dispatch.stage_subagent_nutrition", locale),
+            },
+        )
+    else:
+        yield _stage_event("subagent_nutrition", "done", locale)
     wall_ms = (time.perf_counter() - t0) * 1000.0
     cost_after = current_request_cost()
     tokens_delta = None
@@ -654,12 +827,9 @@ async def _stream_dual_dispatch(
         cost_est=cost_delta,
         parallel=True,
         cost_is_sum_not_wall=True,
-        tcm_failed=isinstance(tcm_result, Exception),
-        nutrition_failed=isinstance(nutrition_result, Exception),
+        tcm_failed=tcm_failed,
+        nutrition_failed=nutrition_failed,
     )
-
-    tcm_failed = isinstance(tcm_result, Exception)
-    nutrition_failed = isinstance(nutrition_result, Exception)
 
     if tcm_failed and nutrition_failed:
         logger.error(
@@ -727,31 +897,46 @@ async def _stream_dual_dispatch(
             yield chunk
         return
 
-    # D20: insufficient context sends the dual path into clarification. During the
-    # retry round, each side gets one forced-answer pass. If only one side still
-    # refuses, keep the successful side and degrade to the existing single-sided
-    # output path instead of ending the whole request as unresolved.
-    tcm_result = await _resolve_unresolved_clarification(
-        tcm_result, task_input, allow_clarification,
-        lambda forced_input: run_tcm_subagent(
-            forced_input, server, constitution=constitution, allergens=allergens,
-            extra_profile_notes=extra_notes, complete=complete,
-            user_id=request.user_id, locale=locale,
-        ),
+    # D20: insufficient context sends the dual path into clarification.
+    # - First round + only one side clarifies: force that side to answer instead of
+    #   discarding it and degrading to single-sided output.
+    # - Retry round (`allow_clarification=False`): force every side that still
+    #   clarifies; if one side still refuses after force, degrade to the other.
+    run_tcm = lambda forced_input: run_tcm_subagent(
+        forced_input, server, constitution=constitution, allergens=allergens,
+        extra_profile_notes=extra_notes, complete=complete,
+        user_id=request.user_id, locale=locale,
     )
-    nutrition_result = await _resolve_unresolved_clarification(
-        nutrition_result, task_input, allow_clarification,
-        lambda forced_input: run_nutrition_subagent(
-            forced_input, server, allergens=allergens, extra_profile_notes=extra_notes,
-            include_recipe_skill=include_recipe, complete=complete,
-            user_id=request.user_id, locale=locale,
-        ),
+    run_nutrition = lambda forced_input: run_nutrition_subagent(
+        forced_input, server, allergens=allergens, extra_profile_notes=extra_notes,
+        include_recipe_skill=include_recipe, complete=complete,
+        user_id=request.user_id, locale=locale,
     )
+    if allow_clarification:
+        tcm_wants_clarify = extract_clarification_question(tcm_result.final_text) is not None
+        nutrition_wants_clarify = (
+            extract_clarification_question(nutrition_result.final_text) is not None
+        )
+        if tcm_wants_clarify and not nutrition_wants_clarify:
+            tcm_result = await _force_clarifying_side_to_answer(
+                tcm_result, task_input, run_tcm,
+            )
+        elif nutrition_wants_clarify and not tcm_wants_clarify:
+            nutrition_result = await _force_clarifying_side_to_answer(
+                nutrition_result, task_input, run_nutrition,
+            )
+    else:
+        tcm_result = await _resolve_unresolved_clarification(
+            tcm_result, task_input, allow_clarification, run_tcm,
+        )
+        nutrition_result = await _resolve_unresolved_clarification(
+            nutrition_result, task_input, allow_clarification, run_nutrition,
+        )
     tcm_still_clarifying = extract_clarification_question(tcm_result.final_text) is not None
     nutrition_still_clarifying = (
         extract_clarification_question(nutrition_result.final_text) is not None
     )
-    if tcm_still_clarifying and not nutrition_still_clarifying:
+    if not allow_clarification and tcm_still_clarifying and not nutrition_still_clarifying:
         logger.warning(
             "tcm still requested clarification after forced retry; "
             "degrading to nutrition-only output · trace_id=%s",
@@ -767,7 +952,7 @@ async def _stream_dual_dispatch(
         ):
             yield chunk
         return
-    if nutrition_still_clarifying and not tcm_still_clarifying:
+    if not allow_clarification and nutrition_still_clarifying and not tcm_still_clarifying:
         logger.warning(
             "nutrition still requested clarification after forced retry; "
             "degrading to tcm-only output · trace_id=%s",
@@ -821,7 +1006,30 @@ async def _stream_dual_dispatch(
         matched_rules=matched_rules,
     )
     yield _stage_event("reconcile", "start", locale)
-    reconciled = await reconcile_subagent_results(**reconciliation_kwargs, complete=complete, locale=locale)
+    try:
+        reconciled = await reconcile_subagent_results(
+            **reconciliation_kwargs, complete=complete, locale=locale
+        )
+    except Exception as exc:
+        logger.warning(
+            "reconciliation failed, concatenating subagent texts · trace_id=%s · error=%s",
+            trace_id,
+            exc,
+            exc_info=True,
+        )
+        reconciled = ReconciliationResult(
+            text=f"{tcm_result.final_text}\n\n{nutrition_result.final_text}",
+            model="",
+            tier=ModelTier.DEV,
+            provider="fallback",
+        )
+        yield sse_event(
+            "guardrail",
+            {
+                "type": "reconciliation_failed",
+                "detail": t("dispatch.reconciliation_failed", locale),
+            },
+        )
     branch_mode: BranchMode = (
         "candidate_eval" if decision.branch is RouteBranch.CANDIDATE_EVAL else "full_recommend"
     )
@@ -845,16 +1053,23 @@ async def _stream_dual_dispatch(
             "trace_id=%s · terms=%s · retries_left=%d",
             trace_id, avoid_terms, retries_left,
         )
-        reconciled = await reconcile_subagent_results(
-            **reconciliation_kwargs,
-            avoid_note=_build_allergen_avoid_note(avoid_terms),
-            complete=complete,
-            locale=locale,
-        )
+        try:
+            reconciled = await reconcile_subagent_results(
+                **reconciliation_kwargs,
+                avoid_note=_build_allergen_avoid_note(avoid_terms),
+                complete=complete,
+                locale=locale,
+            )
+        except Exception as exc:
+            logger.warning(
+                "allergen reconciliation retry failed, keeping previous text · trace_id=%s · error=%s",
+                trace_id,
+                exc,
+                exc_info=True,
+            )
+            break
         allergen_retried = True
         retries_left -= 1
-
-    # 调和层的过敏原重试(上面的 while 循环)算在 reconcile 阶段之内一起收尾——
     # 对用户来说这仍然是"两侧结论调和"这一件事，不是调和完了又单独一个
     # "重试"阶段。
     yield _stage_event("reconcile", "done", locale)
@@ -902,18 +1117,36 @@ _OTHER_SYSTEM_PROMPT = (
 async def _stream_other(
     request: ChatRequest, complete: CompleteFn, trace_id: str, session_history: str = ""
 ) -> AsyncIterator[str]:
-    with observation("other", as_type="span", input={"message": redact_text(request.message)}):
-        result = await complete(
-            [
-                {
-                    "role": "system",
-                    "content": apply_language_instruction(_OTHER_SYSTEM_PROMPT, request.locale),
-                },
-                {"role": "user", "content": _compose_task_input(request.message, session_history)},
-            ],
-            force_prod_tier=False,
+    locale = request.locale
+    unavailable = t("dispatch.other_unavailable", locale)
+    try:
+        with observation("other", as_type="span", input={"message": redact_text(request.message)}):
+            result = await complete(
+                [
+                    {
+                        "role": "system",
+                        "content": apply_language_instruction(_OTHER_SYSTEM_PROMPT, locale),
+                    },
+                    {"role": "user", "content": _compose_task_input(request.message, session_history)},
+                ],
+                force_prod_tier=False,
+            )
+            update_current(output={"text": redact_text(result.text or "")})
+    except Exception as exc:
+        logger.warning(
+            "other branch LLM failed · trace_id=%s · error=%s",
+            trace_id,
+            exc,
+            exc_info=True,
         )
-        update_current(output={"text": redact_text(result.text or "")})
+        yield sse_event(
+            "guardrail",
+            {"type": "other_unavailable", "detail": unavailable},
+        )
+        for chunk in chunk_text(unavailable):
+            yield sse_event("token", {"text": chunk})
+        yield sse_event("done", {"trace_id": trace_id})
+        return
     for chunk in chunk_text(result.text or ""):
         yield sse_event("token", {"text": chunk})
     yield sse_event("done", {"trace_id": trace_id})
@@ -930,6 +1163,8 @@ async def dispatch_branch(
     clarification_store: ClarificationStore,
     allow_clarification: bool = True,
     session_history: str = "",
+    pending_critical_store: PendingCriticalFactStore | None = None,
+    prefetched_fact_scan: CriticalFactScanResult | None = None,
 ) -> AsyncIterator[str]:
     """七选一分支的完整处理——各自吐一条完整的 token/source/guardrail/done
     序列。单任务路径(api/main.py 的 `_stream_chat_inner`)和多任务路径
@@ -967,6 +1202,19 @@ async def dispatch_branch(
         # profile 用来把 logged_at 转换成这个用户自己的时区显示(2026-08-31)——
         # 数据库驱动带回来的原始 tzinfo 只是连接会话的显示时区，不是用户所在地。
         async for chunk in stream_log_review(request, server, trace_id, profile):
+            yield chunk
+        return
+    if decision.branch is RouteBranch.PROFILE_WRITE:
+        if pending_critical_store is None:
+            raise RuntimeError("profile_write requires pending_critical_store")
+        async for chunk in stream_profile_write(
+            request,
+            trace_id,
+            profile,
+            complete,
+            pending_critical_store,
+            prefetched_scan=prefetched_fact_scan,
+        ):
             yield chunk
         return
     if decision.branch is RouteBranch.LOG_WRITE:
@@ -1007,6 +1255,8 @@ async def stream_multi_task(
     trace_id: str,
     clarification_store: ClarificationStore,
     session_history: str = "",
+    pending_critical_store: PendingCriticalFactStore | None = None,
+    prefetched_fact_scan: CriticalFactScanResult | None = None,
 ) -> AsyncIterator[str]:
     """D32/§5.1.1：一句话包含多个独立意图时逐个分发。**顺序**执行，不并发——
     写入类(log_write)子任务必须先完整落库，不应该被其他子任务的并发调度
@@ -1031,6 +1281,10 @@ async def stream_multi_task(
         async for chunk in dispatch_branch(
             segment_request, candidate.decision, server, complete, trace_id, profile,
             conflict_rules_fetcher, clarification_store, session_history=session_history,
+            pending_critical_store=pending_critical_store,
+            prefetched_fact_scan=prefetched_fact_scan
+            if candidate.decision.branch is RouteBranch.PROFILE_WRITE
+            else None,
         ):
             if chunk.startswith(_EVENT_DONE_PREFIX):
                 yield sse_event("task_done", {"index": index})

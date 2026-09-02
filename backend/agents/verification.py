@@ -684,43 +684,53 @@ async def _verify_inner(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ]
-        result = await complete(messages, force_prod_tier=False)
-        llm_raw = result.text
-        verdicts, needs_retry = _parse_llm_verdicts(result.text or "")
-        still_accepted: list[SuggestionItem] = []
-        for iid, item in labeled:
-            verdict = verdicts.get(iid)
-            if verdict is None or verdict.action == "accept":
-                still_accepted.append(item)
-            elif verdict.action == "reject":
-                rejected.append(
-                    RejectedItem(
-                        item=item,
-                        check_number=verdict.check_number,
-                        reason=verdict.reason or f"LLM 软判定拒绝 {iid}",
-                        action="remove",
+        try:
+            result = await complete(messages, force_prod_tier=False)
+        except Exception as exc:
+            logger.warning(
+                "verification soft-check LLM failed, skipping soft checks · branch=%s · error=%s",
+                branch,
+                exc,
+                exc_info=True,
+            )
+            llm_raw = None
+        else:
+            llm_raw = result.text
+            verdicts, needs_retry = _parse_llm_verdicts(result.text or "")
+            still_accepted: list[SuggestionItem] = []
+            for iid, item in labeled:
+                verdict = verdicts.get(iid)
+                if verdict is None or verdict.action == "accept":
+                    still_accepted.append(item)
+                elif verdict.action == "reject":
+                    rejected.append(
+                        RejectedItem(
+                            item=item,
+                            check_number=verdict.check_number,
+                            reason=verdict.reason or f"LLM 软判定拒绝 {iid}",
+                            action="remove",
+                        )
                     )
-                )
-            else:  # annotate
-                # The initial hard checks have already passed; current policy
-                # sends the LLM-generated annotation directly.
-                annotated_source_ids = [
-                    source_id
-                    for source_id in extract_cited_ids(verdict.text or "")
-                    if validate_citations(
-                        f"[source: {source_id}]", available_source_ids
-                    ).ok
-                ]
-                still_accepted.append(
-                    SuggestionItem(
-                        text=verdict.text or "",
-                        item_id=item.item_id,
-                        # Keep provenance metadata limited to markers present
-                        # in the rewritten text and valid for this request.
-                        source_ids=list(dict.fromkeys(annotated_source_ids)),
+                else:  # annotate
+                    # The initial hard checks have already passed; current policy
+                    # sends the LLM-generated annotation directly.
+                    annotated_source_ids = [
+                        source_id
+                        for source_id in extract_cited_ids(verdict.text or "")
+                        if validate_citations(
+                            f"[source: {source_id}]", available_source_ids
+                        ).ok
+                    ]
+                    still_accepted.append(
+                        SuggestionItem(
+                            text=verdict.text or "",
+                            item_id=item.item_id,
+                            # Keep provenance metadata limited to markers present
+                            # in the rewritten text and valid for this request.
+                            source_ids=list(dict.fromkeys(annotated_source_ids)),
+                        )
                     )
-                )
-        accepted = still_accepted
+            accepted = still_accepted
 
     logger.info(
         "verification done · branch=%s · accepted=%d · rejected=%d · retry=%s",

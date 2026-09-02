@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-中枢 agent：七条分支路由判断（记录 / 记录回顾 / 事实查询 / 候选评估 / 单领域 /
-完整推荐 / 其他）+ 一句话多意图切分。
+中枢 agent：八条分支路由判断（记录 / 画像记录 / 记录回顾 / 事实查询 / 候选评估 /
+单领域 / 完整推荐 / 其他）+ 一句话多意图切分。
 
 设计依据：docs/ARCHITECTURE.md §5.1；决策依据：docs/DECISIONS.md D12 / D25
 roadmap：阶段 4.2 任务 6
@@ -42,7 +42,8 @@ logger = logging.getLogger("diet_expert.agents.router")
 
 
 class RouteBranch(str, Enum):
-    LOG_WRITE = "log_write"  # 记录
+    LOG_WRITE = "log_write"  # 记录（饮食日志）
+    PROFILE_WRITE = "profile_write"  # 画像记录（过敏/补剂等关键事实）
     LOG_REVIEW = "log_review"  # 记录回顾
     FACT_QUERY = "fact_query"  # 事实查询
     CANDIDATE_EVAL = "candidate_eval"  # 候选评估
@@ -66,6 +67,13 @@ class RouteDecision:
     """False when no regex fired. classify_route still reports FULL_RECOMMEND so
     the sync contract stays a six-branch enum; classify_route_async then asks
     the LLM instead of treating unmatched as a real full_recommend hit."""
+    matched_span: tuple[int, int] | None = None
+    """(start, end) of the winning regex hit in the original query — only set
+    when `rule_matched` fired off an actual pattern match (not the empty-query/
+    unmatched defaults). 2026-09-01：`_classify_turn_inner()` 用它检测"无连接词
+    但规则命中片段之外还留有一段能独立规则命中、且分支不同的文本"这种情况
+    (见 DECISIONS.md D32 补充记录那个"confidently 但其实不完整"的已知缺口)，
+    不改变 classify_route() 对其余调用方的既有返回形状。"""
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +99,28 @@ _LOG_WRITE = [
     _en(r"\b(log|record|save|write)\b.{0,16}(to |into )?(my )?(diet |food |meal )?(log|record)\b"),
     _en(r"\bi (just |already )?(ate|had)\b.{0,40}\b(log|record|save|write) (it|this|that)\b"),
     _en(r"please remember.{0,12}\bi (ate|had)\b"),
+]
+
+# 画像记录：显式要把过敏/不耐受/补剂等写入 user_profile（不是记一顿吃了什么）
+# ⚠️ 排在 log_write 之前——"Please log that I'm allergic…" 里的 log 不是 diet log。
+_PROFILE_WRITE = [
+    re.compile(r"(记录|记下|保存|写入).{0,12}(过敏|不耐受|忌口|禁忌|补剂|偏好|口味)"),
+    re.compile(r"(过敏|不耐受|忌口).{0,12}(记(一下|下|录)|保存|写入)"),
+    re.compile(r"我对.{0,24}(过敏|不耐受).{0,12}(记|保存|写入|录)"),
+    re.compile(r"(帮我)?(记录|记下)(一下|下)?.{0,20}(不吃|不喜欢|讨厌|忌口|偏好|口味)"),
+    re.compile(r"(不吃|不喜欢|讨厌).{0,12}(记(一下|下|录)|保存|写入|录)"),
+    _en(
+        r"\b(log|record|save|write|remember)\b.{0,40}\b("
+        r"allerg|intoleran|restriction|supplement|lactose|health|prefers?|preference)\b"
+    ),
+    _en(
+        r"\bplease\b.{0,20}\b(log|record|remember)\b.{0,40}\b("
+        r"allerg|intoleran|lactose|intolerance|restriction)\b"
+    ),
+    _en(
+        r"\b(log|record|save|remember)\b.{0,40}\b("
+        r"hate|avoid|don'?t (eat|like)|dislike)\b"
+    ),
 ]
 
 # 记录回顾：问的是「我自己」过去吃了什么（query_diet_log）
@@ -221,10 +251,10 @@ _OTHER_GREETINGS = [
 ]
 
 
-def _first_match(patterns: list[re.Pattern[str]], text: str) -> re.Pattern[str] | None:
+def _first_match(patterns: list[re.Pattern[str]], text: str) -> re.Match[str] | None:
     for p in patterns:
-        if p.search(text):
-            return p
+        if m := p.search(text):
+            return m
     return None
 
 
@@ -233,12 +263,13 @@ def classify_route(query: str) -> RouteDecision:
 
     Priority (more specific first — do not reorder casually):
       1. log_review          ← before log_write so 「查…饮食记录」≠ 写入
-      2. log_write
-      3. candidate_eval      ← must beat full_recommend ("选哪个" ≠ 从零生成)
-      4. fact_query          ← log_review already beat "我昨天吃了什么"
-      5. single_domain
-      6. full_recommend (explicit patterns only)
-      7. other               ← 纯寒暄(整句锚定匹配)，排在 full_recommend 之后：
+      2. profile_write       ← before log_write so 「记录过敏」≠ 记饮食
+      3. log_write
+      4. candidate_eval      ← must beat full_recommend ("选哪个" ≠ 从零生成)
+      5. fact_query          ← log_review already beat "我昨天吃了什么"
+      6. single_domain
+      7. full_recommend (explicit patterns only)
+      8. other               ← 纯寒暄(整句锚定匹配)，排在 full_recommend 之后：
          真实请求即便夹了一句问候也会先被更前面的分支拦下，走到这里的只剩
          "整条消息就是一句寒暄"这一种情况(2026-08-27 新增,D33)
       unmatched → FULL_RECOMMEND with rule_matched=False (LLM fallback is
@@ -251,38 +282,58 @@ def classify_route(query: str) -> RouteDecision:
         )
 
     if m := _first_match(_LOG_REVIEW, text):
-        return RouteDecision(RouteBranch.LOG_REVIEW, reason=f"log_review:{m.pattern}")
+        return RouteDecision(
+            RouteBranch.LOG_REVIEW, reason=f"log_review:{m.re.pattern}", matched_span=m.span()
+        )
+
+    if m := _first_match(_PROFILE_WRITE, text):
+        return RouteDecision(
+            RouteBranch.PROFILE_WRITE,
+            reason=f"profile_write:{m.re.pattern}",
+            matched_span=m.span(),
+        )
 
     if m := _first_match(_LOG_WRITE, text):
-        return RouteDecision(RouteBranch.LOG_WRITE, reason=f"log_write:{m.pattern}")
+        return RouteDecision(
+            RouteBranch.LOG_WRITE, reason=f"log_write:{m.re.pattern}", matched_span=m.span()
+        )
 
     if m := _first_match(_CANDIDATE_EVAL, text):
-        return RouteDecision(RouteBranch.CANDIDATE_EVAL, reason=f"candidate_eval:{m.pattern}")
+        return RouteDecision(
+            RouteBranch.CANDIDATE_EVAL, reason=f"candidate_eval:{m.re.pattern}", matched_span=m.span()
+        )
 
     if m := _first_match(_FACT_QUERY, text):
         return RouteDecision(
             RouteBranch.FACT_QUERY,
-            reason=f"fact_query:{m.pattern}",
+            reason=f"fact_query:{m.re.pattern}",
             domain_hint=_guess_domain_hint(text),
+            matched_span=m.span(),
         )
 
     if m := _first_match(_SINGLE_DOMAIN_TCM, text):
         return RouteDecision(
-            RouteBranch.SINGLE_DOMAIN, reason=f"single_domain_tcm:{m.pattern}", domain_hint="tcm"
+            RouteBranch.SINGLE_DOMAIN,
+            reason=f"single_domain_tcm:{m.re.pattern}",
+            domain_hint="tcm",
+            matched_span=m.span(),
         )
 
     if m := _first_match(_SINGLE_DOMAIN_NUTRITION, text):
         return RouteDecision(
             RouteBranch.SINGLE_DOMAIN,
-            reason=f"single_domain_nutrition:{m.pattern}",
+            reason=f"single_domain_nutrition:{m.re.pattern}",
             domain_hint="nutrition",
+            matched_span=m.span(),
         )
 
     if m := _first_match(_FULL_RECOMMEND, text):
-        return RouteDecision(RouteBranch.FULL_RECOMMEND, reason=f"full_recommend:{m.pattern}")
+        return RouteDecision(
+            RouteBranch.FULL_RECOMMEND, reason=f"full_recommend:{m.re.pattern}", matched_span=m.span()
+        )
 
     if m := _first_match(_OTHER_GREETINGS, text):
-        return RouteDecision(RouteBranch.OTHER, reason=f"other:{m.pattern}")
+        return RouteDecision(RouteBranch.OTHER, reason=f"other:{m.re.pattern}", matched_span=m.span())
 
     return RouteDecision(
         RouteBranch.FULL_RECOMMEND, reason="unmatched", rule_matched=False
@@ -384,7 +435,13 @@ _VALID_DOMAIN_HINTS = {"tcm", "nutrition"}
 # Shared by classify_route_async and classify_turn so the two LLM fallbacks
 # cannot drift. other is a last resort, not "anything that mentions weather".
 _BRANCH_GUIDE = (
-    "- log_write: user wants to save what they ate into the diet log\n"
+    "- profile_write: user wants to SAVE health/profile facts into their portrait — "
+    "allergies, food intolerances, supplements, taste preferences, dietary dislikes "
+    "(e.g. don't eat cilantro). "
+    "Use when they ask to log/remember/save these facts (even with unusual wording). "
+    "NOT what they ate — that is log_write\n"
+    "- log_write: user wants to save what they ATE (specific meals/dishes/drinks) "
+    "into the diet log — NOT allergies or profile restrictions\n"
     "- log_review: user asks what THEY ate in the past (their own log), not a knowledge-base fact\n"
     "- fact_query: a single factual question about one food's properties — TCM nature/"
     "flavor/meridian, nutrients, allergens, 'is X cold/hot'. Not a meal plan\n"
@@ -396,7 +453,7 @@ _BRANCH_GUIDE = (
     "- full_recommend: open-ended what-to-eat that needs both TCM and nutrition — "
     "today/tonight's meals, a day's plan, eating while working late, or weather/"
     "climate/season as a constraint on what to eat\n"
-    "- other: ONLY when none of the six apply. Pure greetings/thanks/farewell; a "
+    "- other: ONLY when none of the seven diet/profile branches apply. Pure greetings/thanks/farewell; a "
     "question with no diet/food/TCM/nutrition intent at all (pure 'how's the "
     "weather', math, news); or a food-adjacent how-to we cannot retrieve (cooking "
     "steps, knife skills). Weather/season as a constraint on what to eat is "
@@ -413,7 +470,7 @@ _ROUTE_LLM_SYSTEM = (
     f"{_BRANCH_GUIDE}"
     "\n"
     "Output format (machine-parsed — English keys only). Return one JSON object:\n"
-    '{"branch":"<one of the seven>","domain_hint":"tcm"|"nutrition"|null}\n'
+    '{"branch":"<one of the eight>","domain_hint":"tcm"|"nutrition"|null}\n'
     "domain_hint is required for fact_query and single_domain; otherwise null.\n"
     "Output ONLY that JSON object — no text, no explanation, before or after it.\n"
     "One call only. Do not plan multiple steps. Do not call tools."
@@ -579,7 +636,7 @@ async def classify_route_async(
 
 _TURN_LLM_SYSTEM = (
     "你是 diet_expert 的路由分类器。判断用户这句话包含几个相互独立的请求,"
-    "把每一个请求分别分到下面七条分支之一。**大多数消息只包含一个请求**——"
+    "把每一个请求分别分到下面八条分支之一。**大多数消息只包含一个请求**——"
     "拿不准的时候优先当成一个请求处理,只有确实包含多个明显独立、分支也不同"
     "的请求时才拆开。"
     "规则说明可用中文理解；机器可读输出必须是英文键名的 JSON，不要 Markdown，"
@@ -590,7 +647,7 @@ _TURN_LLM_SYSTEM = (
     "\n"
     "Output format (machine-parsed — English keys only). Return one JSON object:\n"
     '{"tasks":[{"text":"<the original-language fragment for this request>",'
-    '"branch":"<one of the seven>","domain_hint":"tcm"|"nutrition"|null}]}\n'
+    '"branch":"<one of the eight>","domain_hint":"tcm"|"nutrition"|null}]}\n'
     "domain_hint is required only for fact_query/single_domain items; otherwise null.\n"
     "If there is only one request, return a list with exactly one item whose \"text\" "
     "is the whole original message.\n"
@@ -661,6 +718,34 @@ async def _llm_classify_turn(
     return tasks
 
 
+# 2026-09-01：无连接词、但规则命中片段之外还留有一段像是独立话题的文本——
+# 已知缺口(DECISIONS.md D32 补充记录，例："我想知道气虚质应该怎么调理饮食，
+# 我昨天都吃了什么给我查一下"，_LOG_REVIEW 在"我昨天都吃了什么"上命中，
+# "气虚质怎么调理"这半句被直接丢弃，此前的触发条件不会跑 LLM 复核)。
+# 完整的"每条消息都过一次 LLM"代价太大，没有采用；这里用一个几乎零成本的
+# 折中信号：命中片段之外的残余文本，剥掉首尾标点/空白之后，如果自己也能
+# 独立规则命中、且命中的分支和主命中不同，才当作"很可能是第二个意图"去补
+# 打一次 LLM 复核——和 classify_multi_task() "每个切分片段都必须独立规则
+# 命中"是同一个判据，只是这次的切分边界不是连接词，而是主命中的 span。
+# 单纯的语气词/敬语前缀（"麻烦帮我看看，"）独立跑 classify_route() 大概率
+# 落进"unmatched"，不会触发，不会把日常单意图消息的 LLM 调用率推高。
+_LEFTOVER_TRIM_CHARS = " \t\n，,。.！!？?、；;：:—-·"
+
+
+def _leftover_signals_second_intent(query: str, decision: RouteDecision) -> bool:
+    if decision.matched_span is None:
+        return False
+    start, end = decision.matched_span
+    for leftover in (query[:start], query[end:]):
+        leftover = leftover.strip(_LEFTOVER_TRIM_CHARS)
+        if not leftover:
+            continue
+        leftover_decision = classify_route(leftover)
+        if leftover_decision.rule_matched and leftover_decision.branch is not decision.branch:
+            return True
+    return False
+
+
 async def _classify_turn_inner(
     query: str, *, complete: CompleteFn | None = None
 ) -> tuple[MultiTaskCandidate, ...]:
@@ -683,7 +768,10 @@ async def _classify_turn_inner(
         # 条件一样，只有整句规则也没命中时才值得打一次 LLM——但这次判断的是
         # "这句话该拆成几个任务"，不只是"该分到哪一个分支"，覆盖的是压根
         # 没用连接词的隐式多意图(比如"麻婆豆腐好吃吗我中午吃了")。
-        needs_llm_check = not single.rule_matched
+        # 规则"确定"命中时再补一次检查(见 `_leftover_signals_second_intent`
+        # 上方注释)：命中片段之外的残余文本能不能自己独立规则命中一个不同的
+        # 分支——能就说明规则大概率命中在了错的位置，前半句可能被丢了。
+        needs_llm_check = not single.rule_matched or _leftover_signals_second_intent(query, single)
 
     if not needs_llm_check:
         return (MultiTaskCandidate(text=query, decision=single),)

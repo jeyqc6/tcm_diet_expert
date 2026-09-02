@@ -45,7 +45,7 @@ from enum import Enum
 from typing import Any, Awaitable, Callable
 
 from backend.env import load_env
-from backend.exceptions import DietExpertError, NonRetryableError
+from backend.exceptions import DietExpertError, LLMCallError, NonRetryableError
 from backend.llm.providers.base import TokenUsage, ToolCall
 from backend.llm.providers.registry import build_provider
 from backend.observability.cost import estimate_cost_usd
@@ -90,13 +90,6 @@ _DEFAULT_MODELS.update(
         ("deepseek", ModelTier.PROD): "deepseek-v4-flash",
     }
 )
-
-
-class LLMCallError(DietExpertError):
-    """重试耗尽后的最终失败，调用方应按 PRD §11 fallback 表处理，不是让它冒泡崩整条链路。"""
-
-    http_status = 503
-    error_type = "llm_call_error"
 
 
 def _get_tier() -> ModelTier:
@@ -329,7 +322,8 @@ async def complete(
             else:
                 if resp.stop_reason == "content_filter":
                     # ENGINEERING §1.2："内容策略拒绝 → 不重试，走 fallback"
-                    circuit.record_failure()
+                    # Policy rejection is not an infrastructure outage — do not
+                    # trip the circuit breaker.
                     _record_generation_error(
                         t0, model, provider_name, attempt, fallback_triggered,
                         NonRetryableError("模型内容策略拒绝(content_filter)"),

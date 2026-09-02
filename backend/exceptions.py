@@ -87,6 +87,13 @@ class ResourceLimitError(DietExpertError):
     error_type = "resource_limit_error"
 
 
+class LLMCallError(DietExpertError):
+    """Exhausted retries on an LLM call — callers should degrade per PRD §11."""
+
+    http_status = 503
+    error_type = "llm_call_error"
+
+
 class AuthorizationError(DietExpertError):
     """Caller invoked something outside its declared permission set."""
 

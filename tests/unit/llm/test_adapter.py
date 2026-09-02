@@ -151,6 +151,7 @@ def test_content_filter_is_non_retryable(circuit):
     with pytest.raises(NonRetryableError):
         _run(complete([{"role": "user", "content": "hi"}], provider=provider, sleep=sleep, circuit=circuit))
     assert recorded == []
+    assert circuit.consecutive_failures == 0
 
 
 # ---------- 双档模型切换(D19) ----------

@@ -40,8 +40,8 @@ from __future__ import annotations
 
 import dataclasses
 import re
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Mapping
 
 from backend.agents.user_context import UserProfileContext
 
@@ -75,7 +75,37 @@ ALLERGEN_CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
     ),
     "大豆": ("大豆", "黄豆", "豆制品", "soy", "soybean", "soybeans"),
     "蛋类": ("蛋类", "鸡蛋", "蛋清", "蛋黄", "egg", "eggs"),
+    # 不在中美九类里的常见具体过敏原——落库用字面名(同 onboarding 自由填写
+    # "芒果")，check_allergens() 的字面命中层能直接拦住。
+    "芒果": ("芒果", "mango", "mangoes"),
+    "菠萝": ("菠萝", "pineapple", "pineapples"),
 }
+
+# Canonical keys in user_profile.allergens stay Chinese (output_filters alignment).
+# English UI only — map to display labels in pending banners / SSE detail text.
+ALLERGEN_EN_DISPLAY: dict[str, str] = {
+    "甲壳类": "shellfish/crustaceans",
+    "鱼类": "fish",
+    "乳制品": "dairy",
+    "麸质": "gluten",
+    "芝麻": "sesame",
+    "花生": "peanuts",
+    "坚果": "tree nuts",
+    "大豆": "soy",
+    "蛋类": "eggs",
+    "芒果": "mango",
+    "菠萝": "pineapple",
+    "猕猴桃": "kiwi",
+}
+
+
+def display_allergen_for_locale(name: str, locale: str) -> str:
+    """Return a user-facing allergen label; storage keys remain unchanged."""
+    from backend.i18n import normalize_locale
+
+    if normalize_locale(locale) != "en":
+        return name
+    return ALLERGEN_EN_DISPLAY.get(name, name)
 
 # 否定语境：紧挨在命中位置前面出现时，判定这次出现是"明确说明不过敏"，不算
 # 命中——"我不是对虾过敏"、"并非对芝麻过敏"。同 output_filters.py 的窗口式
@@ -120,12 +150,16 @@ def _build_allergy_patterns() -> dict[str, tuple[re.Pattern[str], ...]]:
         patterns[category] = (
             re.compile(rf"对({kw_group}).{{0,6}}过敏"),
             re.compile(rf"({kw_group}).{{0,4}}过敏"),
+            re.compile(rf"({kw_group})不耐受"),
             re.compile(rf"过敏原?(?:是|有|包括|[:：])\s*.{{0,4}}({kw_group})"),
             re.compile(rf"\ballerg(?:y|ic)\s+to\s+({kw_group})\b", re.IGNORECASE),
             re.compile(rf"\b({kw_group})\s+allerg(?:y|ies)\b", re.IGNORECASE),
             re.compile(
                 rf"\ballerg(?:y|ies)?\s*(?:is|are|include[s]?|:)\s*({kw_group})\b", re.IGNORECASE
             ),
+            # 英文不耐受/过敏声明——"lactose intolerant"、"intolerant to dairy"。
+            re.compile(rf"\b({kw_group})\s+intoleran(?:t|ce)\b", re.IGNORECASE),
+            re.compile(rf"\bintolerant\s+to\s+({kw_group})\b", re.IGNORECASE),
         )
     return patterns
 
@@ -235,10 +269,38 @@ class CriticalFactScanResult:
 
     new_allergens: tuple[str, ...] = ()
     new_supplements: tuple[str, ...] = ()
+    new_preferences: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def hit(self) -> bool:
-        return bool(self.new_allergens or self.new_supplements)
+        return bool(self.new_allergens or self.new_supplements or self.new_preferences)
+
+
+def _merge_preferences(existing: Mapping[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+    """Shallow merge with list union for list-valued keys (e.g. 忌口)."""
+    merged = dict(existing)
+    for key, value in patch.items():
+        if isinstance(value, list) and isinstance(merged.get(key), list):
+            merged[key] = list(dict.fromkeys([*merged[key], *value]))
+        else:
+            merged[key] = value
+    return merged
+
+
+def _preferences_delta(
+    existing: Mapping[str, Any], patch: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Keys in patch that are new or changed relative to existing preferences."""
+    delta: dict[str, Any] = {}
+    for key, value in patch.items():
+        existing_val = existing.get(key)
+        if isinstance(value, list) and isinstance(existing_val, list):
+            new_items = [item for item in value if item not in existing_val]
+            if new_items:
+                delta[key] = new_items
+        elif existing_val != value:
+            delta[key] = value
+    return delta
 
 
 def scan_critical_facts(
@@ -288,13 +350,26 @@ def merge_into_profile(
         payload["allergens"] = list(merged_allergens)
     if result.new_supplements:
         payload["supplements"] = list(merged_supplements)
+    if result.new_preferences:
+        merged_preferences = _merge_preferences(
+            profile.preferences if profile else {}, result.new_preferences
+        )
+        payload["preferences"] = merged_preferences
 
     if profile is not None:
         updated_profile = dataclasses.replace(
-            profile, allergens=merged_allergens, supplements=merged_supplements
+            profile,
+            allergens=merged_allergens,
+            supplements=merged_supplements,
+            preferences=_merge_preferences(profile.preferences, result.new_preferences)
+            if result.new_preferences
+            else profile.preferences,
         )
     else:
         updated_profile = UserProfileContext(
-            user_id=user_id, allergens=merged_allergens, supplements=merged_supplements
+            user_id=user_id,
+            allergens=merged_allergens,
+            supplements=merged_supplements,
+            preferences=dict(result.new_preferences),
         )
     return payload, updated_profile

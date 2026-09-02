@@ -35,3 +35,17 @@ def test_event_dict_does_not_claim_already_recorded():
     assert event["pending_id"] == "p1"
     assert "甲壳类" in event["detail"]
     assert "已记录" not in event["detail"]
+
+
+def test_event_dict_english_localizes_allergen_labels():
+    fact = PendingCriticalFact(
+        pending_id="p2",
+        user_id="u",
+        session_id="s",
+        allergens=("乳制品", "芒果"),
+    )
+    event = fact.to_event_dict(locale="en")
+    assert "dairy" in event["detail"]
+    assert "mango" in event["detail"]
+    assert "乳制品" not in event["detail"]
+    assert event["allergens"] == ["乳制品", "芒果"]

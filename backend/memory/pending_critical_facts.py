@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover
 
 from backend.env import get_pg_dsn
 from backend.i18n import current_locale, normalize_locale, t
+from backend.memory.critical_fact_scanner import display_allergen_for_locale
 
 logger = logging.getLogger("diet_expert.memory.pending_critical_facts")
 
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS pending_critical_facts (
     session_id      TEXT NOT NULL,
     allergens       TEXT[] NOT NULL DEFAULT '{}',
     supplements     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    preferences     JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """
@@ -51,6 +53,7 @@ class PendingCriticalFact:
     session_id: str
     allergens: tuple[str, ...] = ()
     supplements: tuple[str, ...] = ()
+    preferences: dict[str, Any] = field(default_factory=dict)
     created_at: str = ""
 
     def to_event_dict(self, locale: str | None = None) -> dict[str, Any]:
@@ -59,21 +62,31 @@ class PendingCriticalFact:
             "pending_id": self.pending_id,
             "allergens": list(self.allergens),
             "supplements": list(self.supplements),
-            "detail": _detail_text(self.allergens, self.supplements, loc),
+            "preferences": dict(self.preferences),
+            "detail": _detail_text(
+                self.allergens, self.supplements, self.preferences, loc
+            ),
         }
 
 
 def _detail_text(
-    allergens: tuple[str, ...], supplements: tuple[str, ...], locale: str = "zh"
+    allergens: tuple[str, ...],
+    supplements: tuple[str, ...],
+    preferences: dict[str, Any],
+    locale: str = "zh",
 ) -> str:
     locale = normalize_locale(locale)
     item_separator = ", " if locale == "en" else "、"
     part_separator = "; " if locale == "en" else "，"
     parts = []
     if allergens:
-        parts.append(t("pending.allergen", locale, names=item_separator.join(allergens)))
+        display_names = [display_allergen_for_locale(name, locale) for name in allergens]
+        parts.append(t("pending.allergen", locale, names=item_separator.join(display_names)))
     if supplements:
         parts.append(t("pending.supplement", locale, names=item_separator.join(supplements)))
+    if preferences:
+        pref_text = json.dumps(preferences, ensure_ascii=False)
+        parts.append(t("pending.preferences", locale, names=pref_text))
     joined = part_separator.join(parts) if parts else t("pending.generic", locale)
     return t("pending.detail", locale, joined=joined)
 
@@ -126,6 +139,10 @@ class PostgresPendingCriticalFactStore:
             return
         cur = conn.cursor()
         cur.execute(_CREATE_TABLE_SQL)
+        cur.execute(
+            "ALTER TABLE pending_critical_facts "
+            "ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'::jsonb"
+        )
         conn.commit()
         cur.close()
         self._ensured = True
@@ -140,8 +157,8 @@ class PostgresPendingCriticalFactStore:
             cur.execute(
                 """
                 INSERT INTO pending_critical_facts
-                    (id, user_id, session_id, allergens, supplements)
-                VALUES (%s, %s, %s, %s, %s)
+                    (id, user_id, session_id, allergens, supplements, preferences)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (
                     fact.pending_id,
@@ -149,6 +166,7 @@ class PostgresPendingCriticalFactStore:
                     fact.session_id,
                     list(fact.allergens),
                     json.dumps([{"name": n, "dose": None} for n in fact.supplements]),
+                    json.dumps(fact.preferences, ensure_ascii=False),
                 ),
             )
             conn.commit()
@@ -233,12 +251,21 @@ def _row_to_fact(row: dict[str, Any]) -> PendingCriticalFact:
         created_s = created.astimezone(timezone.utc).isoformat()
     else:
         created_s = str(created or "")
+    preferences = row.get("preferences") or {}
+    if isinstance(preferences, str):
+        try:
+            preferences = json.loads(preferences)
+        except json.JSONDecodeError:
+            preferences = {}
+    if not isinstance(preferences, dict):
+        preferences = {}
     return PendingCriticalFact(
         pending_id=row["id"],
         user_id=row.get("user_id") or DEFAULT_USER_ID,
         session_id=row["session_id"],
         allergens=tuple(row.get("allergens") or ()),
         supplements=tuple(names),
+        preferences=preferences,
         created_at=created_s,
     )
 

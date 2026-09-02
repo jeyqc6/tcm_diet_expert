@@ -87,7 +87,7 @@ from backend.agents.clarification import (
 )
 from backend.agents.conflict_rules_lookup import fetch_matched_conflict_rules
 from backend.agents.dispatch import ConflictRulesFetcher, dispatch_branch, stream_multi_task
-from backend.agents.routing import RouteDecision, classify_turn
+from backend.agents.routing import RouteBranch, RouteDecision, classify_turn
 from backend.agents.sse import chunk_text, sse_event
 from backend.agents.timeouts import aiter_with_timeout, chain_timeout_s
 from backend.agents.user_context import (
@@ -107,6 +107,7 @@ from backend.llm import adapter as llm_adapter
 from backend.llm.adapter import CompleteFn
 from backend.logging_config import configure_logging
 from backend.mcp_server.roles import CallerRole
+from backend.mcp_server.safe_call import safe_call_tool
 from backend.mcp_server.server import DietExpertMcpServer
 from backend.mcp_server.tools._retrieval_common import warm_embedder, warm_embedder_enabled
 from backend.memory import session_store
@@ -184,6 +185,23 @@ _pending_critical_store_singleton: PendingCriticalFactStore = InMemoryPendingCri
 # 声息地根本没执行、且没有任何报错。`add_done_callback` 在任务结束(不管
 # 成功/失败)后把它从这个集合里摘掉，避免集合无限增长。
 _background_tasks: set[asyncio.Task] = set()
+
+
+def _log_background_task_result(task: asyncio.Task) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        logger.exception("background task failed")
+
+
+def _uses_in_memory_stores() -> bool:
+    return (
+        isinstance(_pending_critical_store_singleton, InMemoryPendingCriticalFactStore)
+        or isinstance(_clarification_store_singleton, InMemoryClarificationStore)
+        or isinstance(_onboarding_store_singleton, InMemoryOnboardingSessionStore)
+    )
 
 logger = logging.getLogger("diet_expert.api")
 
@@ -376,7 +394,10 @@ async def healthz():
     明确不放在启动路径上，冷启动 90s 判据是 healthz 200，不是知识库灌完。
     """
     if os.environ.get("HEALTHZ_CHECK_DB") != "1":
-        return {"status": "ok"}
+        payload: dict[str, object] = {"status": "ok"}
+        if _uses_in_memory_stores():
+            payload["degraded"] = True
+        return payload
 
     dsn = os.environ.get("DIET_EXPERT_PG_DSN")
     if not dsn:
@@ -417,7 +438,7 @@ async def healthz():
             {"status": "unhealthy", "detail": "db unreachable"},
             status_code=503,
         )
-    return {"status": "ok"}
+    return {"status": "ok", **({"degraded": True} if _uses_in_memory_stores() else {})}
 
 
 # Medical-intent disclaimer copy lives in backend.i18n (`api.medical_disclaimer`).
@@ -528,6 +549,7 @@ async def _dispatch_and_record(
     )
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_log_background_task_result)
 
 
 async def _stream_chat(
@@ -738,10 +760,17 @@ async def _stream_chat_inner(
                 logger.warning("persist locale failed · user_id=%s", request.user_id, exc_info=True)
         if onboarding_turn.done and onboarding_turn.profile_updates is not None:
             session = server.open_session(CallerRole.ROUTER, user_id=request.user_id)
-            session.call_tool(
+            write_result = safe_call_tool(
+                session,
                 "write_memory",
                 {"category": "critical", "payload": onboarding_turn.profile_updates},
             )
+            if not write_result.ok:
+                logger.warning(
+                    "onboarding write_memory failed · trace_id=%s · error=%s",
+                    trace_id,
+                    write_result.detail,
+                )
         logger.info(
             "chat onboarding · trace_id=%s · started=%s · done=%s",
             trace_id, onboarding_turn.started, onboarding_turn.done,
@@ -760,27 +789,9 @@ async def _stream_chat_inner(
     idle_session_folder(request.session_id)
     session_history = session_history_loader(request.session_id)
 
-    # §4.3 / D34: scan every turn, but do NOT UPSERT or merge into this turn's
-    # profile until the user confirms (PRD §10.2). Pending facts sit in
-    # pending_critical_facts; confirm/revoke are separate endpoints.
+    # §4.3 / D34: deterministic scan runs every turn; pending emit may be deferred
+    # to profile_write when that branch owns LLM merge (see below after classify_turn).
     fact_scan = scan_critical_facts(request.message, profile)
-    if fact_scan.hit:
-        pending = PendingCriticalFact(
-            pending_id=new_pending_id(),
-            user_id=request.user_id,
-            session_id=request.session_id,
-            allergens=fact_scan.new_allergens,
-            supplements=fact_scan.new_supplements,
-        )
-        try:
-            pending_critical_store.put(pending)
-        except Exception:
-            logger.exception("failed to persist pending critical fact · trace_id=%s", trace_id)
-        logger.info(
-            "critical fact pending · trace_id=%s · pending_id=%s · allergens=%s · supplements=%s",
-            trace_id, pending.pending_id, fact_scan.new_allergens, fact_scan.new_supplements,
-        )
-        yield sse_event("critical_fact_pending", pending.to_event_dict(locale=request.locale))
 
     # D20 五处 agent 行为点第3条(2026-08-27 实现)：上一轮问过用户一个澄清
     # 问题，这一轮消息是回答——不重新走路由，直接把补充信息拼回原文本，
@@ -820,6 +831,7 @@ async def _stream_chat_inner(
                 request.model_copy(update={"message": combined_message}),
                 retry_decision, server, complete, trace_id, profile, conflict_rules_fetcher,
                 clarification_store, allow_clarification=False, session_history=session_history,
+                pending_critical_store=pending_critical_store,
             ),
             session_id=request.session_id,
             branch_fallback=pending.branch.value,
@@ -840,6 +852,33 @@ async def _stream_chat_inner(
     # DECISIONS.md D32 补充说明。返回值恒为非空元组，长度为 1 就是原来的
     # 单任务场景，`dispatch_branch` 走法和这条设计生效前完全一样。
     tasks = await classify_turn(request.message, complete=complete)
+    runs_profile_write = any(t.decision.branch is RouteBranch.PROFILE_WRITE for t in tasks)
+    if fact_scan.hit and not runs_profile_write:
+        pending = PendingCriticalFact(
+            pending_id=new_pending_id(),
+            user_id=request.user_id,
+            session_id=request.session_id,
+            allergens=fact_scan.new_allergens,
+            supplements=fact_scan.new_supplements,
+        )
+        try:
+            pending_critical_store.put(pending)
+        except Exception:
+            logger.exception("failed to persist pending critical fact · trace_id=%s", trace_id)
+            yield sse_event(
+                "guardrail",
+                {
+                    "type": "pending_critical_store_failed",
+                    "detail": t("api.pending_critical_store_failed", request.locale),
+                },
+            )
+        else:
+            logger.info(
+                "critical fact pending · trace_id=%s · pending_id=%s · allergens=%s · supplements=%s",
+                trace_id, pending.pending_id, fact_scan.new_allergens, fact_scan.new_supplements,
+            )
+            yield sse_event("critical_fact_pending", pending.to_event_dict(locale=request.locale))
+
     outcome["branch"] = tasks[0].decision.branch.value if len(tasks) == 1 else None
     outcome["multi_task"] = len(tasks) > 1
     outcome["branches"] = [t.decision.branch.value for t in tasks]
@@ -883,6 +922,8 @@ async def _stream_chat_inner(
             stream_multi_task(
                 request, tasks, server, complete, profile, conflict_rules_fetcher, trace_id,
                 clarification_store, session_history=session_history,
+                pending_critical_store=pending_critical_store,
+                prefetched_fact_scan=fact_scan if runs_profile_write else None,
             ),
             session_id=request.session_id,
             branch_fallback="+".join(outcome["branches"]),
@@ -897,6 +938,10 @@ async def _stream_chat_inner(
         dispatch_branch(
             request, tasks[0].decision, server, complete, trace_id, profile, conflict_rules_fetcher,
             clarification_store, session_history=session_history,
+            pending_critical_store=pending_critical_store,
+            prefetched_fact_scan=fact_scan
+            if tasks[0].decision.branch is RouteBranch.PROFILE_WRITE
+            else None,
         ),
         session_id=request.session_id,
         branch_fallback=tasks[0].decision.branch.value,
@@ -1068,9 +1113,17 @@ async def patch_profile(
         else request.value
     )
     session = server.open_session(CallerRole.ROUTER, user_id=request.user_id)
-    result = session.call_tool(
-        "write_memory", {"category": "critical", "payload": {request.field: value}}
+    write_result = safe_call_tool(
+        session,
+        "write_memory",
+        {"category": "critical", "payload": {request.field: value}},
     )
+    if not write_result.ok:
+        return JSONResponse(
+            {"detail": t("api.tool_call_failed")},
+            status_code=503,
+        )
+    result = write_result.result
     return {"ok": result.ok, "fields_written": list(result.fields_written)}
 
 
@@ -1092,13 +1145,25 @@ async def confirm_critical_fact(
     if pending is None:
         return JSONResponse({"detail": t("api.pending_not_found")}, status_code=404)
     scan = CriticalFactScanResult(
-        new_allergens=pending.allergens, new_supplements=pending.supplements
+        new_allergens=pending.allergens,
+        new_supplements=pending.supplements,
+        new_preferences=pending.preferences,
     )
     payload, _updated = merge_into_profile(
         scan, profile_fetcher(user_id=pending.user_id), user_id=pending.user_id
     )
     session = server.open_session(CallerRole.ROUTER, user_id=pending.user_id)
-    result = session.call_tool("write_memory", {"category": "critical", "payload": payload})
+    write_result = safe_call_tool(
+        session,
+        "write_memory",
+        {"category": "critical", "payload": payload},
+    )
+    if not write_result.ok:
+        return JSONResponse(
+            {"detail": t("api.tool_call_failed")},
+            status_code=503,
+        )
+    result = write_result.result
     pending_critical_store.delete(request.pending_id)
     return {
         "ok": result.ok,
@@ -1150,13 +1215,15 @@ async def onboarding_answer(
     result = apply_answer(request.step_id, request.answer, request.state, locale=request.locale)
     if isinstance(result, OnboardingResult):
         session = server.open_session(CallerRole.ROUTER, user_id=request.user_id)
-        write_result = session.call_tool(
-            "write_memory", {"category": "critical", "payload": result.profile_updates}
+        write_result = safe_call_tool(
+            session,
+            "write_memory",
+            {"category": "critical", "payload": result.profile_updates},
         )
         return {
             "step_id": "done",
             "summary": result.summary,
             "profile_updates": result.profile_updates,
-            "written": write_result.ok,
+            "written": bool(write_result.ok and write_result.result.ok),
         }
     return {"step_id": result.step_id, "prompt": result.prompt, "state": result.state}

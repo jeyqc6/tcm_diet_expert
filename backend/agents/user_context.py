@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -38,6 +39,8 @@ except ImportError:  # pragma: no cover
 
 from backend.env import get_pg_dsn
 from backend.i18n import DEFAULT_LOCALE, normalize_locale
+
+logger = logging.getLogger("diet_expert.agents.user_context")
 
 DEFAULT_USER_ID = "default_user"
 
@@ -211,6 +214,7 @@ def ensure_user_profile(
     try:
         conn = psycopg2.connect(resolved_dsn)
     except Exception:
+        logger.warning("ensure_user_profile: connect failed", exc_info=True)
         return False
     try:
         cur = conn.cursor()
@@ -222,6 +226,7 @@ def ensure_user_profile(
         cur.close()
         return True
     except Exception:
+        logger.warning("ensure_user_profile: query failed", exc_info=True)
         return False
     finally:
         conn.close()
@@ -239,6 +244,7 @@ def fetch_user_profile(
     try:
         conn = psycopg2.connect(resolved_dsn)
     except Exception:
+        logger.warning("fetch_user_profile: connect failed · user_id=%s", user_id, exc_info=True)
         return None
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -259,6 +265,7 @@ def fetch_user_profile(
         row = cur.fetchone()
         cur.close()
     except Exception:
+        logger.warning("fetch_user_profile: query failed · user_id=%s", user_id, exc_info=True)
         return None
     finally:
         conn.close()
@@ -279,6 +286,7 @@ def list_users(dsn: str | None = None) -> list[dict[str, str]]:
     try:
         conn = psycopg2.connect(resolved_dsn)
     except Exception:
+        logger.warning("list_users: connect failed", exc_info=True)
         return []
     try:
         cur = conn.cursor()
@@ -286,6 +294,7 @@ def list_users(dsn: str | None = None) -> list[dict[str, str]]:
         rows = cur.fetchall()
         cur.close()
     except Exception:
+        logger.warning("list_users: query failed", exc_info=True)
         return []
     finally:
         conn.close()
@@ -306,6 +315,7 @@ def create_user(name: str, dsn: str | None = None) -> dict[str, str] | None:
     try:
         conn = psycopg2.connect(resolved_dsn)
     except Exception:
+        logger.warning("create_user: connect failed", exc_info=True)
         return None
     try:
         cur = conn.cursor()
@@ -316,6 +326,7 @@ def create_user(name: str, dsn: str | None = None) -> dict[str, str] | None:
         conn.commit()
         cur.close()
     except Exception:
+        logger.warning("create_user: insert failed", exc_info=True)
         return None
     finally:
         conn.close()
@@ -339,6 +350,7 @@ def persist_user_locale(
     try:
         conn = psycopg2.connect(resolved_dsn)
     except Exception:
+        logger.warning("persist_user_locale: connect failed · user_id=%s", user_id, exc_info=True)
         return False
     try:
         cur = conn.cursor()
@@ -350,6 +362,7 @@ def persist_user_locale(
         cur.close()
         return True
     except Exception:
+        logger.warning("persist_user_locale: update failed · user_id=%s", user_id, exc_info=True)
         return False
     finally:
         conn.close()

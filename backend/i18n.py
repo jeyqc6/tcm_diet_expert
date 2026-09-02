@@ -150,6 +150,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "dispatch.both_subagents_failed": "两侧分析均失败",
         "dispatch.partial_failure_tcm": "中医侧分析失败，仅展示营养学侧结论",
         "dispatch.partial_failure_nutrition": "营养学侧分析失败，仅展示中医侧结论",
+        "dispatch.subagent_failed": "分析失败，未能给出结论",
+        "dispatch.reconciliation_failed": "两侧结论调和失败，以下为两侧原始结论拼接",
+        "dispatch.other_unavailable": "暂时无法回复，请稍后再试",
         "dispatch.verification_fallback": (
             "抱歉，这次没能给出有可靠依据支持的具体建议。可以换个问法，"
             "或者补充更具体的信息，我再试一次。"
@@ -185,6 +188,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "log_write.unknown_dish": "（未能识别出具体菜品）",
         "log_write.unknown_ingredient": "未知食材",
         "log_write.llm_note": "（模型推测，仅供参考，未在知识库/个人记录中找到）",
+        "profile_write.ack_with_pending": "已识别到要写入画像的信息，请在上方确认条中确认后才会保存。",
+        "profile_write.ack_already_pending": "相关信息已在上方待确认，请在那里确认或忽略。",
+        "profile_write.nothing_new": "没有识别到需要新写入画像的过敏、补剂或饮食偏好信息。",
+        "profile_write.extract_failed": "画像信息提取失败，请重试",
         "log_review.empty": "没有找到「{time_range}」的饮食记录。",
         "log_review.header": "「{time_range}」的饮食记录，共 {count} 条：",
         "api.chain_timeout": "请求超时，已停止后续分析",
@@ -198,11 +205,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "api.create_user_failed": "创建用户失败，请重试",
         "pending.allergen": "过敏原「{names}」",
         "pending.supplement": "补剂「{names}」",
+        "pending.preferences": "饮食偏好「{names}」",
         "pending.generic": "一条关键事实",
         "pending.detail": "检测到{joined}。确认后才会写入画像；本轮建议尚未使用这条信息。",
         "api.profile_unconfirmed": "未确认的修改不会被写入（PRD §10.2 人在环）",
         "api.profile_field_unsupported": "不支持的字段：{field}，可选：{fields}",
         "api.pending_not_found": "未找到待确认的关键事实",
+        "api.tool_call_failed": "后台操作失败，请稍后重试",
+        "api.pending_critical_store_failed": "无法保存待确认的关键事实，请稍后重试",
         "meal.breakfast": "早餐",
         "meal.lunch": "午餐",
         "meal.dinner": "晚餐",
@@ -263,6 +273,11 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "dispatch.both_subagents_failed": "Both analyses failed",
         "dispatch.partial_failure_tcm": "TCM analysis failed; showing the nutrition conclusion only",
         "dispatch.partial_failure_nutrition": "Nutrition analysis failed; showing the TCM conclusion only",
+        "dispatch.subagent_failed": "Analysis failed; no conclusion was produced",
+        "dispatch.reconciliation_failed": (
+            "Reconciliation failed; showing the raw conclusions from both sides concatenated"
+        ),
+        "dispatch.other_unavailable": "Unable to reply right now; please try again later",
         "dispatch.verification_fallback": (
             "Sorry, I could not produce a specific recommendation with reliable support this time. "
             "Try asking another way or add more detail, and I will try again."
@@ -298,6 +313,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "log_write.unknown_dish": "(could not recognize a specific dish)",
         "log_write.unknown_ingredient": "unknown ingredients",
         "log_write.llm_note": "(model guess, for reference only; not found in the knowledge base / personal log)",
+        "profile_write.ack_with_pending": (
+            "Profile facts detected — please confirm in the banner above to save them."
+        ),
+        "profile_write.ack_already_pending": (
+            "These facts are already waiting for confirmation in the banner above."
+        ),
+        "profile_write.nothing_new": (
+            "No new allergens, supplements, or taste preferences were found to add to your profile."
+        ),
+        "profile_write.extract_failed": "Could not extract profile facts; please try again",
         "log_review.empty": "No diet-log entries found for 「{time_range}」.",
         "log_review.header": "Diet log for 「{time_range}」, {count} entries:",
         "api.chain_timeout": "Request timed out; remaining analysis was stopped",
@@ -314,6 +339,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "api.create_user_failed": "Failed to create user; please try again",
         "pending.allergen": "allergen(s) \"{names}\"",
         "pending.supplement": "supplement(s) \"{names}\"",
+        "pending.preferences": "preference(s) \"{names}\"",
         "pending.generic": "a critical fact",
         "pending.detail": (
             "Detected {joined}. It will be written to your profile only after you confirm; "
@@ -322,6 +348,10 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "api.profile_unconfirmed": "Unconfirmed changes are not written (human review is required).",
         "api.profile_field_unsupported": "Unsupported field: {field}. Available: {fields}",
         "api.pending_not_found": "Pending critical fact not found",
+        "api.tool_call_failed": "A backend operation failed; please try again later",
+        "api.pending_critical_store_failed": (
+            "Could not save the pending critical fact; please try again later"
+        ),
         "meal.breakfast": "breakfast",
         "meal.lunch": "lunch",
         "meal.dinner": "dinner",

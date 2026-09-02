@@ -33,6 +33,7 @@ const zh = {
   revokeFailed: "忽略失败，请重试",
   createUserFailed: "创建用户失败，请重试",
   networkError: "网络错误，请重试",
+  streamInterrupted: "回复未完整送达，可能因连接中断",
   langZh: "中",
   langEn: "EN",
 };
@@ -63,6 +64,7 @@ const en: typeof zh = {
   revokeFailed: "Ignore failed; please retry",
   createUserFailed: "Could not create the user; please retry",
   networkError: "Network error; please retry",
+  streamInterrupted: "The reply may be incomplete due to a connection interruption",
   langZh: "中",
   langEn: "EN",
 };

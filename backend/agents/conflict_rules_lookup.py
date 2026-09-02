@@ -25,6 +25,7 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 try:
@@ -34,6 +35,8 @@ except ImportError:  # pragma: no cover
     psycopg2 = None
 
 from backend.env import get_pg_dsn
+
+logger = logging.getLogger("diet_expert.agents.conflict_rules_lookup")
 
 DEFAULT_LIMIT = 5
 
@@ -88,6 +91,7 @@ def fetch_matched_conflict_rules(
     try:
         conn = psycopg2.connect(resolved_dsn)
     except Exception:
+        logger.warning("fetch_matched_conflict_rules: connect failed", exc_info=True)
         return []
     try:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -101,6 +105,7 @@ def fetch_matched_conflict_rules(
         rows = [dict(r) for r in cur.fetchall()]
         cur.close()
     except Exception:
+        logger.warning("fetch_matched_conflict_rules: query failed", exc_info=True)
         return []
     finally:
         conn.close()

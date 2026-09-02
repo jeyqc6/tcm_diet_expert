@@ -174,6 +174,81 @@ Once it's running, each of these hits a different branch of the pipeline above �
 
 Works in Chinese too (the router and both knowledge bases are bilingual) — e.g. "今天该吃什么" / "我对虾过敏".
 
+### Real transcripts
+
+Unedited output from actual runs against a live profile (constitution, allergens, and diet log already on file) — not cherry-picked copy, just what came back.
+
+<details>
+<summary><b>Candidate evaluation</b> — the exact "mapo tofu vs. rice noodles" example from the table above</summary>
+
+> **You:** The restaurant downstairs has mapo tofu and rice noodles — which one should I pick?
+>
+> **Diet Expert:** I need to know:
+> 1. For mapo tofu: Is it the standard version (silken tofu in spicy chili oil with ground pork/beef)? And will you be eating it with rice or noodles?
+> 2. For rice noodles: What style — is it a soup-based dish, stir-fried, or cold? What proteins and vegetables come with it?
+>
+> These details matter for the TCM food therapy assessment, since the preparation method, temperature, and accompanying ingredients significantly affect how the dish interacts with your digestion and energy levels.
+>
+> **You:** 1 yes, 2 stir-fried
+>
+> **Diet Expert:** **Stir-Fried Rice Noodles — Your Better Choice Today.** Go with the stir-fried rice noodles. Both perspectives — traditional food therapy and nutritional science — point the same direction here, though for slightly different reasons.
+>
+> *Why both angles agree:* From a food therapy standpoint, mapo tofu's heavy chili oil creates sustained heat that can overstimulate digestion if eaten too frequently. Your balanced constitution gives you flexibility with spicy foods, but the principle is to alternate between warming and neutral preparations rather than loading every meal with maximum heat. Stir-fried rice noodles, cooked through dry wok heat, deliver a gentler warmth without that inflammatory load. From a nutritional angle, rice noodles have a moderate glycemic index (54–61) — they release energy gradually, especially when paired with protein and oil from the stir-fry.
+>
+> *How to get the spice you want:* You clearly don't want bland food, so don't settle for plain noodles. Ask for the stir-fried noodles to be made with chili oil, or request hot sauce on the side.
+>
+> Bottom line: Stir-fried rice noodles satisfy your need for stable energy release and your taste for heat. Save mapo tofu for another meal when you want bold spice as a deliberate choice.
+>
+> *General model knowledge; not verified against the current knowledge base and may be inaccurate.*
+
+Note the disclaimer on the last line — this answer leaned on general reasoning rather than a knowledge-base citation, and the system labels that difference instead of presenting both the same way.
+
+</details>
+
+<details>
+<summary><b>Fact lookup + multi-turn follow-up</b> — same session, second question references the first with no re-explanation</summary>
+
+> **You:** What is the TCM nature of ginger? Is it helpful to eat ginger in the food, although I don't like the taste of ginger.
+>
+> **Diet Expert:** **TCM nature of ginger:** Ginger is warm in nature and acrid (spicy) in flavor. **Primary functions:** warm the middle (stomach), descend qi, transform dampness, and resolve phlegm.
+>
+> Given your balanced (ping he) constitution, ginger is generally supportive. However, if you actively dislike the taste, forcing yourself to eat it regularly creates a psychological friction that undermines the benefit. Food therapy works best when you can sustain the habit without resistance.
+>
+> - Don't force ginger if you genuinely dislike it — your balanced constitution doesn't require it the way someone with cold-deficiency patterns might.
+> - Use it strategically in small amounts: hide thin slices in soups or broths where the flavor blends into the background.
+> - Or skip it — garlic, onion, or the cooking method itself can warm your food without a flavor you fight against.
+>
+> **You:** how to understand descend qi, transform dampness?
+>
+> **Diet Expert:** **"Descend Qi" (下气):** qi can become stuck or stagnant, rising upward when it should move smoothly downward — traditionally associated with bloating, nausea, or fullness in the chest. "Descend qi" means ginger is traditionally understood to help redirect stuck energy downward.
+>
+> **"Transform Dampness" (化湿):** "dampness" is an imbalance where the body accumulates excess, sluggish fluid — not the same as drinking water, but a thick, heavy, stagnant quality in digestion. "Transform dampness" means ginger is traditionally understood to help break up that heavy, stagnant moisture.
+>
+> For your balanced constitution, this is supportive but not urgent — you don't have a pattern that desperately needs it.
+
+The second question never re-mentions "ginger" — it's resolved from the same session's conversation history, not re-explained from scratch.
+
+</details>
+
+<details>
+<summary><b>Multi-day planning</b> — reads the existing diet log and season, not just the question asked</summary>
+
+> **You:** I might want to have KFC once in the next three days. Could you help me design a meal plan for the next three days? I only eat lunch and dinner each day, and sometimes I skip lunch.
+>
+> **Diet Expert:** **Your 3-Day Meal Plan with KFC.** Looking at your diet log and preferences, I can see you thrive on warm, bold flavors. You're moving into autumn, when it's smart to add more vegetables and hydration-supporting foods without making everything bland. Here's how to include KFC while keeping your energy and digestion steady:
+>
+> **Day 1 — KFC Day.** Dinner: KFC meal. *Pairing strategy:* if KFC has a side salad or coleslaw, grab it; if not, add a quick side of steamed bok choy with garlic — this slows digestion and reduces the heaviness that comes from fried food alone.
+>
+> **Day 2 — Recovery & Balance.** Lunch: egg fried rice with mixed vegetables. Dinner: pork rib + winter melon soup with rice — winter melon is cooling and light, and soup-based meals help digestion bounce back.
+>
+> **Day 3 — Back to Your Bold Flavors.** Dinner: stir-fried chicken or pork with peppers and onions, seasoned boldly (garlic, soy sauce, chili oil). *Why stir-fry instead of deep-fry:* same warmth and spice, but a gentler cooking method that adds vegetables naturally.
+>
+> *Why this pattern works:* sandwich fried food between lighter meals — the day after KFC, favor soup-based and steamed preparations. This isn't about eliminating spice or richness, it's about method and timing. Your recent log is light on greens, which is why vegetables show up in every day above.
+
+Trimmed here for length — the full reply also included a shopping list and ingredient-level reasoning for each swap.
+
+</details>
+
 ## Repository layout
 
 ```

@@ -160,3 +160,43 @@ def test_llm_task_missing_text_falls_back_to_original_query():
     tasks = _run(classify_turn("totally unmatched utterance xyz", complete=complete))
     assert len(tasks) == 1
     assert tasks[0].text == "totally unmatched utterance xyz"
+
+
+# --- 无连接词但规则命中片段之外还留有独立意图(2026-09-01 修，见 D32 补充记录) ---
+
+
+def test_llm_fallback_triggered_when_confident_match_leaves_a_second_intent_stranded():
+    """真实例子(DECISIONS.md D32 补充记录里如实记下的缺口)：没有连接词，
+    _LOG_REVIEW 的正则在"我昨天都吃了什么"上确定命中，但前半句"气虚质怎么
+    调理"是完全独立的另一个意图，此前会被直接丢弃、LLM 兜底压根不会触发。
+    现在命中片段之外的残余文本能独立规则命中一个不同分支(single_domain)，
+    应该补打一次 LLM 复核并正确拆成两个任务。"""
+    complete = _ScriptedComplete(
+        [
+            _llm(
+                '{"tasks":['
+                '{"text":"气虚质应该怎么调理饮食","branch":"single_domain","domain_hint":"tcm"},'
+                '{"text":"我昨天都吃了什么","branch":"log_review","domain_hint":null}'
+                "]}"
+            )
+        ]
+    )
+    tasks = _run(
+        classify_turn(
+            "我想知道气虚质应该怎么调理饮食，我昨天都吃了什么给我查一下", complete=complete
+        )
+    )
+    assert len(tasks) == 2
+    assert tasks[0].decision.branch is RouteBranch.SINGLE_DOMAIN
+    assert tasks[1].decision.branch is RouteBranch.LOG_REVIEW
+    assert complete.call_count == 1
+
+
+def test_filler_prefix_around_confident_match_does_not_trigger_llm():
+    """和上面那条的对照组：命中片段之外的残余文本只是语气词/敬语前缀，自己
+    独立跑规则拿不到任何命中——不该被当成"第二个意图"，不该多打 LLM。"""
+    complete = _ScriptedComplete([])
+    tasks = _run(classify_turn("麻烦帮我看看，我昨天都吃了什么", complete=complete))
+    assert len(tasks) == 1
+    assert tasks[0].decision.branch is RouteBranch.LOG_REVIEW
+    assert complete.call_count == 0

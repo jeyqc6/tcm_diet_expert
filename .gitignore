@@ -11,6 +11,7 @@ evals/results/
 
 # --- 本地工具配置（因人而异，不上传）---
 .claude/settings.local.json
+.claude/
 
 # --- Python ---
 __pycache__/

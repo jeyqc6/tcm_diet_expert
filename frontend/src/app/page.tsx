@@ -264,7 +264,20 @@ export default function Home() {
   const sessionId = useRef<string>("");
   const userId = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [footerHeight, setFooterHeight] = useState(96);
   const copy = messages[locale];
+
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const updateHeight = () => setFooterHeight(el.getBoundingClientRect().height);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pendingFacts, input, sending, locale]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
@@ -407,6 +420,7 @@ export default function Home() {
     const message = input.trim();
     if (!message || sending) return;
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
     setSending(true);
 
     setTurns((prev) => [
@@ -427,11 +441,15 @@ export default function Home() {
         }),
       });
       if (!resp.ok) {
+        const traceId = resp.headers.get("X-Trace-Id");
+        const detail = traceId
+          ? `${copy.httpError.replace("{status}", String(resp.status))} (trace: ${traceId})`
+          : copy.httpError.replace("{status}", String(resp.status));
         applyEvent(
           "guardrail",
           JSON.stringify({
             type: "http_error",
-            detail: copy.httpError.replace("{status}", String(resp.status)),
+            detail,
           }),
         );
         applyEvent("done", JSON.stringify({}));
@@ -457,6 +475,27 @@ export default function Home() {
           applyEvent(parsed.event, parsed.data);
         }
       }
+
+      if (buffer.trim()) {
+        const parsed = parseSseBlock(buffer);
+        if (parsed) applyEvent(parsed.event, parsed.data);
+      }
+
+      setTurns((prev) => {
+        const last = prev[prev.length - 1];
+        if (!last || last.role !== "assistant" || last.done) return prev;
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...last,
+            done: true,
+            guardrails: [
+              ...last.guardrails,
+              { type: "stream_interrupted", detail: copy.streamInterrupted },
+            ],
+          },
+        ];
+      });
     } catch {
       applyEvent("guardrail", JSON.stringify({ type: "network_error", detail: copy.networkError }));
       applyEvent("done", JSON.stringify({}));
@@ -726,7 +765,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div style={{ padding: "16px 0 96px" }}>
+      <div style={{ padding: `16px 0 ${footerHeight + 16}px` }}>
         {!historyLoaded && (
           <p style={{ color: "#999", fontSize: 13, marginBottom: 16 }}>{copy.loadingHistory}</p>
         )}
@@ -736,54 +775,6 @@ export default function Home() {
             {errorMessage}
           </p>
         )}
-
-        {pendingFacts.map((fact) => (
-          <div
-            key={fact.pending_id}
-            style={{
-              marginBottom: 12,
-              padding: "8px 12px",
-              borderRadius: 8,
-              background: "#fff4e0",
-              color: "#5c3d00",
-              fontSize: 13,
-            }}
-          >
-            <div>{fact.detail}</div>
-            <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-              <button
-                type="button"
-                disabled={pendingBusy === fact.pending_id}
-                onClick={() => void decidePendingFact(fact.pending_id, "confirm")}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: "#0070f3",
-                  color: "white",
-                  fontSize: 13,
-                }}
-              >
-                {copy.confirmPending}
-              </button>
-              <button
-                type="button"
-                disabled={pendingBusy === fact.pending_id}
-                onClick={() => void decidePendingFact(fact.pending_id, "revoke")}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #ccc",
-                  background: "white",
-                  color: "#333",
-                  fontSize: 13,
-                }}
-              >
-                {copy.revokePending}
-              </button>
-            </div>
-          </div>
-        ))}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {turns.map((turn, i) => (
@@ -803,10 +794,6 @@ export default function Home() {
                 <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>{turn.taskLabel}</div>
               )}
               {turn.role === "assistant" && !turn.done && turn.stages.length > 0 && (
-                // 只在这一轮还没完全结束时展示——`done`(整轮结束)之后没必要
-                // 继续占地方显示"路由已确定 → 核查"这类过程性信息，最终答案
-                // 本身才是用户关心的。当前活跃的那一步(还没收到 done 的最后
-                // 一条)加粗；已完成的用 ✓ 前缀、颜色变浅。
                 <div style={{ fontSize: 11, color: "#888", marginBottom: 4, display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {turn.stages.map((s, si) => (
                     <span key={s.stage} style={{ color: s.done ? "#999" : "#0070f3", fontWeight: s.done ? 400 : 600 }}>
@@ -854,11 +841,8 @@ export default function Home() {
         <div ref={messagesEndRef} style={{ height: 1 }} />
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void sendMessage();
-        }}
+      <div
+        ref={footerRef}
         style={{
           position: "fixed",
           bottom: 0,
@@ -868,28 +852,110 @@ export default function Home() {
           boxSizing: "border-box",
           width: "calc(100% - 48px)",
           maxWidth: 672,
-          display: "flex",
-          gap: 8,
           padding: "12px 0 16px",
           background: "white",
           borderTop: "1px solid #eee",
         }}
       >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={copy.placeholder}
-          disabled={sending}
-          style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: "1px solid #ccc" }}
-        />
-        <button
-          type="submit"
-          disabled={sending}
-          style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#0070f3", color: "white" }}
+        {pendingFacts.map((fact) => (
+          <div
+            key={fact.pending_id}
+            role="status"
+            style={{
+              marginBottom: 12,
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "#fff4e0",
+              color: "#5c3d00",
+              fontSize: 13,
+            }}
+          >
+            <div>{fact.detail}</div>
+            <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                disabled={pendingBusy === fact.pending_id}
+                onClick={() => void decidePendingFact(fact.pending_id, "confirm")}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "#0070f3",
+                  color: "white",
+                  fontSize: 13,
+                }}
+              >
+                {copy.confirmPending}
+              </button>
+              <button
+                type="button"
+                disabled={pendingBusy === fact.pending_id}
+                onClick={() => void decidePendingFact(fact.pending_id, "revoke")}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  background: "white",
+                  color: "#333",
+                  fontSize: 13,
+                }}
+              >
+                {copy.revokePending}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void sendMessage();
+          }}
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 8,
+          }}
         >
-          {sending ? "…" : copy.send}
-        </button>
-      </form>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              const el = e.target;
+              el.style.height = "auto";
+              el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void sendMessage();
+              }
+            }}
+            placeholder={copy.placeholder}
+            disabled={sending}
+            rows={1}
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #ccc",
+              resize: "none",
+              maxHeight: 160,
+              overflowY: "auto",
+              font: "inherit",
+              lineHeight: 1.4,
+            }}
+          />
+          <button
+            type="submit"
+            disabled={sending}
+            style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#0070f3", color: "white" }}
+          >
+            {sending ? "…" : copy.send}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

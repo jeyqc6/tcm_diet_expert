@@ -210,3 +210,64 @@ def test_forced_clarification_retry_degrades_to_successful_side(monkeypatch):
     assert any("partial_failure" in event and "仅展示中医侧结论" in event for event in events)
     assert "TCM forced answer" in token_text
     assert not any("clarification_unresolved" in event for event in events)
+
+
+def test_asymmetric_clarification_forces_clarifying_side_then_reconciles(monkeypatch):
+    """First round: one side clarifies, the other answers — force the clarifying side
+    instead of discarding it and degrading to single-sided output."""
+    calls = {"tcm": 0, "nutrition": 0, "verify": 0, "reconcile": 0}
+
+    async def fake_tcm(*_a, **_k):
+        calls["tcm"] += 1
+        if calls["tcm"] == 1:
+            return _ok_sub("tcm", "[NEED_CLARIFICATION] 请说明具体食物")
+        return _ok_sub("tcm", "TCM forced answer [source: t1]")
+
+    async def fake_nutrition(*_a, **_k):
+        calls["nutrition"] += 1
+        return _ok_sub("nutrition", "Nutrition answer [source: n1]")
+
+    async def fake_reconcile(**_k):
+        calls["reconcile"] += 1
+        return ReconciliationResult(
+            text="调和结论 [source: t1] [source: n1]",
+            model="m",
+            tier=ModelTier.DEV,
+            provider="fake",
+        )
+
+    async def fake_verify(*_a, **_k):
+        calls["verify"] += 1
+        return VerificationResult(
+            accepted=[SuggestionItem(text="调和结论 [source: t1] [source: n1]")],
+            rejected=[],
+        )
+
+    monkeypatch.setattr("backend.agents.dispatch.run_tcm_subagent", fake_tcm)
+    monkeypatch.setattr("backend.agents.dispatch.run_nutrition_subagent", fake_nutrition)
+    monkeypatch.setattr("backend.agents.dispatch.reconcile_subagent_results", fake_reconcile)
+    monkeypatch.setattr("backend.agents.dispatch.verify", fake_verify)
+    monkeypatch.setattr("backend.agents.dispatch.check_allergens", lambda *_a, **_k: [])
+
+    async def collect():
+        events = []
+        async for chunk in _stream_dual_dispatch(
+            ChatRequest(session_id="s1", message="这个能不能吃"),
+            RouteDecision(branch=RouteBranch.CANDIDATE_EVAL, reason="test"),
+            DietExpertMcpServer(tools={}),
+            complete=AsyncMock(),
+            trace_id="tr-asymmetric-force",
+            profile=None,
+            conflict_rules_fetcher=lambda *_a: [],
+            clarification_store=InMemoryClarificationStore(),
+            allow_clarification=True,
+        ):
+            events.append(chunk)
+        return events
+
+    events = asyncio.run(collect())
+    assert calls == {"tcm": 2, "nutrition": 1, "verify": 1, "reconcile": 1}
+    assert not any("partial_failure" in event for event in events)
+    assert not any("clarification" in event for event in events)
+    token_text = "".join(data for event in events if (data := event) and "event: token" in event)
+    assert "调和结论" in token_text
