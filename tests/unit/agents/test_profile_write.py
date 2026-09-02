@@ -4,8 +4,6 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
 from backend.agents.profile_write import (
     LlmProfileExtract,
     merge_profile_facts,

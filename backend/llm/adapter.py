@@ -45,7 +45,7 @@ from enum import Enum
 from typing import Any, Awaitable, Callable
 
 from backend.env import load_env
-from backend.exceptions import DietExpertError, LLMCallError, NonRetryableError
+from backend.exceptions import LLMCallError, NonRetryableError
 from backend.llm.providers.base import TokenUsage, ToolCall
 from backend.llm.providers.registry import build_provider
 from backend.observability.cost import estimate_cost_usd

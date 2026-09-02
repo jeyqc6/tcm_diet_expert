@@ -902,16 +902,19 @@ async def _stream_dual_dispatch(
     #   discarding it and degrading to single-sided output.
     # - Retry round (`allow_clarification=False`): force every side that still
     #   clarifies; if one side still refuses after force, degrade to the other.
-    run_tcm = lambda forced_input: run_tcm_subagent(
-        forced_input, server, constitution=constitution, allergens=allergens,
-        extra_profile_notes=extra_notes, complete=complete,
-        user_id=request.user_id, locale=locale,
-    )
-    run_nutrition = lambda forced_input: run_nutrition_subagent(
-        forced_input, server, allergens=allergens, extra_profile_notes=extra_notes,
-        include_recipe_skill=include_recipe, complete=complete,
-        user_id=request.user_id, locale=locale,
-    )
+    async def run_tcm(forced_input: str):
+        return await run_tcm_subagent(
+            forced_input, server, constitution=constitution, allergens=allergens,
+            extra_profile_notes=extra_notes, complete=complete,
+            user_id=request.user_id, locale=locale,
+        )
+
+    async def run_nutrition(forced_input: str):
+        return await run_nutrition_subagent(
+            forced_input, server, allergens=allergens, extra_profile_notes=extra_notes,
+            include_recipe_skill=include_recipe, complete=complete,
+            user_id=request.user_id, locale=locale,
+        )
     if allow_clarification:
         tcm_wants_clarify = extract_clarification_question(tcm_result.final_text) is not None
         nutrition_wants_clarify = (
