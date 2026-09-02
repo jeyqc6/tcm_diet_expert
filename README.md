@@ -85,36 +85,6 @@ A real answer to "what should I eat tonight" needs *your* constitution, *this we
 
 ## How it works
 
-```mermaid
-flowchart TD
-    U["User message"] --> IF["Input guardrails\n(truncation · prompt-injection filter · medical-intent detection)"]
-    IF --> CF["Critical-fact scan\n(allergens / restrictions / supplements → human-in-the-loop confirm)"]
-    CF --> R{{"Router\n8-way classification"}}
-
-    R -->|log a meal| LW["Dish lookup: curated table → personal alias →\nLLM fallback for unmatched text,\nthen a deterministic write (no LLM)"]
-    R -->|record a health fact| PW["profile_write\nLLM extract → human-in-the-loop confirm\n(no LLM for the write itself)"]
-    R -->|review my log| LR["Deterministic query\n(no LLM)"]
-    R -->|small talk / off-topic| OTHER["Single direct reply\n(no tools, no verification)"]
-
-    R -->|fact question| S1["One SubAgent\n(TCM or nutrition)"]
-    R -->|single-domain question| S1
-    R -->|evaluate a candidate dish| DUAL["TCM SubAgent + Nutrition SubAgent\nin parallel, isolated contexts,\nown retrieval tool each"]
-    R -->|open-ended recommendation| DUAL
-
-    DUAL --> REC["Reconciliation\n(one LLM call, arbitrates via\na curated conflict-rule table)"]
-    S1 --> VER["Verification\n(hard blocks: allergen/ED/diagnostic/citation\n+ one no-tool repair for evidence gaps)"]
-    REC --> VER
-    FALLBACK["Naive RAG fallback\n1 retrieval + 1 generation call"]
-    DUAL -.both sides fail.-> FALLBACK
-    FALLBACK --> VER
-
-    VER --> OUT(["Streamed to the client (SSE)"])
-    LW --> OUT
-    PW --> OUT
-    LR --> OUT
-    OTHER --> OUT
-```
-
 - **Isolated contexts, not one shared prompt.** TCM retrieval is qualitative and categorical ("warming," "nourishes blood"); nutrition retrieval is quantitative and unit-dense (mg, %DV). Mixed into one context, the quantitative side tends to squeeze the qualitative side into false precision, and vice versa. Each SubAgent returns a conclusion + citations — not raw chunks — to the reconciliation step.
 - **Reconciliation is one dedicated, tool-free LLM call**, deliberately kept from touching raw retrieval results. It checks the conflict-rule table first and is instructed to give a committed stance, not "both sides have a point."
 - **Storage is one Postgres instance** — pgvector for retrieval, plain tables for everything relational (profile, diet log, conversation history, conflict-rule table). No separate vector DB, no graph DB: pgvector already gives hybrid dense+sparse retrieval without adding a second system to operate.
