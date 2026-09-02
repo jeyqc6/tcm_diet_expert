@@ -8,6 +8,97 @@
 
 ---
 
+```mermaid
+flowchart TB
+    classDef client fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
+    classDef guard fill:#fee2e2,stroke:#b91c1c,color:#450a0a
+    classDef fast fill:#dcfce7,stroke:#15803d,color:#052e16
+    classDef agent fill:#fef9c3,stroke:#a16207,color:#422006
+    classDef arbitrate fill:#fae8ff,stroke:#a21caf,color:#3b0764
+    classDef store fill:#e0f2fe,stroke:#0369a1,color:#0c4a6e
+    classDef llm fill:#f1f5f9,stroke:#334155,color:#0f172a
+
+    U(["User"]):::client --> FE["Next.js chat UI"]:::client
+    FE <-->|SSE: token/source/guardrail/stage/clarification/done| API["FastAPI /api/chat"]:::client
+
+    subgraph L1["Guardrails · every turn"]
+        IF["Input filters\nprompt-injection · truncation · medical-intent triage"]:::guard
+        CFS["Critical-fact scanner\nallergen / supplement mention → pending confirm"]:::guard
+        IF --> CFS
+    end
+    API --> L1
+
+    RT{"Router\n8-way regex cascade\n+ LLM fallback on miss"}:::guard
+    L1 --> RT
+
+    subgraph L2["Deterministic branches — zero LLM calls for storage"]
+        LW["log_write\n3-tier dish lookup → write"]:::fast
+        LR["log_review\nquery diet log"]:::fast
+        PW["profile_write\nhealth-fact human-in-the-loop"]:::fast
+        OTH["other — chit-chat"]:::agent
+    end
+    RT -->|record / review / off-topic| L2
+    L2 --> API
+
+    subgraph L3["Isolated SubAgents"]
+        TCM["TCM SubAgent · 24k ctx\nMCP tools: retrieve_tcm, query_weather, query_diet_log"]:::agent
+        NUT["Nutrition SubAgent · 24k ctx\nMCP tools: retrieve_nutrition, query_recipes, query_diet_log"]:::agent
+    end
+    RT -->|fact / single-domain / candidate / full| L3
+
+    subgraph L4["Hybrid RAG — inside each retrieval call"]
+        MQE["MQE query rewrite\n≤2 variants, 1 LLM call"]:::llm
+        EMB["BGE-M3\ndense + sparse encode"]:::store
+        RRF["Reciprocal Rank Fusion"]:::store
+        MQE --> EMB --> RRF
+    end
+    L3 --> L4
+
+    SKL[("Versioned Agent Skills\nreconciliation rubric · verification checklist\nrecipe template")]:::store
+
+    REC["Reconciliation\n1 tool-free LLM call vs. curated conflict-rule table"]:::arbitrate
+    VER["Verification\ndeterministic hard blocks + 1 no-tool repair"]:::arbitrate
+    L3 -->|both sides answer| REC
+    L3 -->|one side answers| VER
+    REC --> VER
+    SKL -.loaded per step.-> REC
+    SKL -.loaded per step.-> VER
+
+    FB["Naive RAG fallback\n1 retrieval + 1 generation call"]:::arbitrate
+    L3 -.both sides fail.-> FB
+    FB --> VER
+    VER --> API
+
+    subgraph L5["Postgres — single instance"]
+        PROF[("user_profile")]:::store
+        LOGT[("diet_log")]:::store
+        HIST[("conversation history\ntiered compression")]:::store
+        RULES[("conflict_rules · 40")]:::store
+        VEC[("knowledge_chunks\npgvector")]:::store
+    end
+    L1 -.-> L5
+    RT -.profile / history.-> L5
+    L3 -.-> L5
+    REC -.-> RULES
+    RRF -.-> VEC
+
+    subgraph L6["LLM providers · dev / delivery tier"]
+        PROV["Ollama · OpenRouter · OpenAI · Anthropic · DeepSeek"]:::llm
+    end
+    RT -.-> L6
+    TCM -.-> L6
+    NUT -.-> L6
+    REC -.-> L6
+    VER -.-> L6
+    MQE -.-> L6
+    OTH -.-> L6
+
+    LF[["Langfuse — one trace_id per request"]]:::store
+    API -.-> LF
+```
+
+Solid arrows are the main request path; dashed arrows are storage/provider access and observability. Full 8-branch routing decision logic (which regex/LLM classification sends a message down which path) is further down in [How it works](#how-it-works).
+
 ## The problem
 
 | Channel | Gap |
@@ -21,7 +112,36 @@ A real answer to "what should I eat tonight" needs *your* constitution, *this we
 
 **The differentiator isn't retrieval. It's reconciliation.** TCM and nutrition science frequently disagree — sometimes because they're right about different things, sometimes because they're talking about different concepts wearing the same name (TCM "replenishing blood" ≠ nutrition science "correcting iron-deficiency anemia" — same phrase, different referent). Most systems either present both sides and let the user guess, or silently defer to whichever domain the prompt happened to lean on. This one runs both domains, then arbitrates the conflict explicitly, against a hand-curated table of real TCM-vs-nutrition disagreements — not a model improvising an opinion on the spot.
 
-## Product highlights
+## Highlights
+
+**Product**
+- Two independent RAG knowledge bases (TCM + nutrition), reconciled explicitly, never blended
+- CCMQ constitution questionnaire — primary + secondary type, tagged self-report vs. computed
+- Deterministic allergen hard-block, including hidden-ingredient mapping (oyster sauce → shellfish)
+- Preferences (hard constraints) modeled separately from goals (soft direction tags)
+- Live weather- and season-aware recommendations (Open-Meteo)
+- Free-text meal logging → dish/ingredient decomposition → queryable diet log
+- Cross-session memory: profile, diet log, tiered-compressed conversation history
+- Multi-user, bilingual (zh/en), each with their own timezone
+
+**Engineering**
+- Hybrid dense + sparse retrieval (BGE-M3 + RRF) with LLM multi-query expansion
+- Isolated dual-agent SubAgents, tool access enforced by an MCP protocol-layer whitelist
+- Versioned Agent Skills, composed in only at the one pipeline step that needs them
+- Deterministic-first routing — LLM classifier only called when the regex cascade misses
+- Reconciliation arbitrated against a curated 40-rule conflict table, not model improvisation
+- Verification: deterministic hard blocks + one no-tool evidence repair, never blind regeneration
+- Guardrails mapped line-by-line to the OWASP LLM Top 10, not a generic claim
+- Streaming invariant enforced by code structure: verification always precedes the first token
+- Human-in-the-loop confirmation gates every safety-critical profile write
+- Idempotent writes via a hash-based key, not client-side debouncing
+- 1,100+ tests, zero live LLM calls in CI
+- Dual-tier eval harness (keyword rubric + LLM-as-judge) with pre-registered architecture ablations
+
+<details>
+<summary>Full technical detail behind each item</summary>
+
+**Product**
 
 - **Two independent RAG knowledge bases, not one blended one.** TCM food-therapy and nutrition science are retrieved and reasoned about separately (4,447 + 1,390 chunks), then explicitly reconciled — not silently blended into one voice that quietly favors whichever domain happened to dominate the prompt.
 - **A real constitution profile, not a self-report checkbox.** First-use onboarding runs a CCMQ-based questionnaire when the user doesn't already know their TCM constitution, computes primary + secondary types, and tags whether the result came from self-report or the questionnaire — so downstream advice can be appropriately more or less confident.
@@ -32,7 +152,7 @@ A real answer to "what should I eat tonight" needs *your* constitution, *this we
 - **Cross-session memory.** Profile, diet log, and a tiered-compression conversation history persist in Postgres, not just in the current chat window.
 - **Multi-user, bilingual (zh/en), each with their own timezone** — not a single hardcoded persona.
 
-## Engineering highlights
+**Engineering**
 
 - **Hybrid RAG retrieval, not a single dense-vector lookup.** Each query runs dense + sparse search (BGE-M3's dual output) merged with Reciprocal Rank Fusion, plus multi-query expansion (an LLM rewrites the query into up to 2 alternate phrasings, each searched and fused in) to close the vocabulary gap between how a user asks and how the knowledge base is worded — with a silent fallback to single-query search if the rewrite call fails.
 - **Isolated dual-agent retrieval + a real MCP tool layer.** TCM and nutrition SubAgents reason in separate 24k-token contexts. Tool access goes through a local Model Context Protocol (MCP) server with a per-role whitelist enforced at the protocol layer — the TCM SubAgent's session literally does not have `write_memory` or the nutrition retrieval tool in its tool list, so there's no prompt instruction to talk it out of.
@@ -48,15 +168,18 @@ A real answer to "what should I eat tonight" needs *your* constitution, *this we
 - **1,100+ tests, zero live LLM calls in CI.** Every test that touches an LLM call uses a mocked or replayed response; the suite runs on every push without burning tokens or needing an API key.
 - **A real evaluation harness, not a vibe check.** A frozen test set scored two independent ways — keyword rubric and LLM-as-judge — after the keyword rubric was caught penalizing correct-but-differently-worded answers. Architecture decisions (like the dual-agent split above) get pre-registered ablation tests with an explicit revert criterion, not just shipped on intuition.
 
+</details>
+
 ## How it works
 
 ```mermaid
 flowchart TD
     U["User message"] --> IF["Input guardrails\n(truncation · prompt-injection filter · medical-intent detection)"]
     IF --> CF["Critical-fact scan\n(allergens / restrictions / supplements → human-in-the-loop confirm)"]
-    CF --> R{{"Router\n7-way classification"}}
+    CF --> R{{"Router\n8-way classification"}}
 
     R -->|log a meal| LW["Dish lookup: curated table → personal alias →\nLLM fallback for unmatched text,\nthen a deterministic write (no LLM)"]
+    R -->|record a health fact| PW["profile_write\nLLM extract → human-in-the-loop confirm\n(no LLM for the write itself)"]
     R -->|review my log| LR["Deterministic query\n(no LLM)"]
     R -->|small talk / off-topic| OTHER["Single direct reply\n(no tools, no verification)"]
 
@@ -68,9 +191,13 @@ flowchart TD
     DUAL --> REC["Reconciliation\n(one LLM call, arbitrates via\na curated conflict-rule table)"]
     S1 --> VER["Verification\n(hard blocks: allergen/ED/diagnostic/citation\n+ one no-tool repair for evidence gaps)"]
     REC --> VER
+    FALLBACK["Naive RAG fallback\n1 retrieval + 1 generation call"]
+    DUAL -.both sides fail.-> FALLBACK
+    FALLBACK --> VER
 
     VER --> OUT(["Streamed to the client (SSE)"])
     LW --> OUT
+    PW --> OUT
     LR --> OUT
     OTHER --> OUT
 ```
@@ -78,6 +205,7 @@ flowchart TD
 - **Isolated contexts, not one shared prompt.** TCM retrieval is qualitative and categorical ("warming," "nourishes blood"); nutrition retrieval is quantitative and unit-dense (mg, %DV). Mixed into one context, the quantitative side tends to squeeze the qualitative side into false precision, and vice versa. Each SubAgent returns a conclusion + citations — not raw chunks — to the reconciliation step.
 - **Reconciliation is one dedicated, tool-free LLM call**, deliberately kept from touching raw retrieval results. It checks the conflict-rule table first and is instructed to give a committed stance, not "both sides have a point."
 - **Storage is one Postgres instance** — pgvector for retrieval, plain tables for everything relational (profile, diet log, conversation history, conflict-rule table). No separate vector DB, no graph DB: pgvector already gives hybrid dense+sparse retrieval without adding a second system to operate.
+- **A real fallback when both SubAgents fail, not a dead end.** One retrieval pass per domain (no multi-query expansion, to keep it cheap) plus a single generation call, then reused through the same verification pass — degraded, but still grounded and checked, instead of a bare error.
 
 ## Evaluation
 
